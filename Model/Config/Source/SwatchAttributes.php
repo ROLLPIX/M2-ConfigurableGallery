@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 namespace Rollpix\ConfigurableGallery\Model\Config\Source;
 
+use Magento\Catalog\Model\Product;
 use Magento\Eav\Api\AttributeRepositoryInterface;
 use Magento\Framework\Api\SearchCriteriaBuilder;
 use Magento\Framework\Data\OptionSourceInterface;
 
 /**
  * Source model for the color_attribute_code config field.
- * Lists all product attributes that are of type swatch_visual or swatch_text.
+ * Lists all product select/multiselect attributes suitable for color mapping:
+ * - Swatch attributes (visual or text)
+ * - Regular select attributes used as configurable super attributes
+ * - Any select/multiselect product attribute (admin may use a custom one)
  */
 class SwatchAttributes implements OptionSourceInterface
 {
@@ -31,27 +35,27 @@ class SwatchAttributes implements OptionSourceInterface
                 ->create();
 
             $attributes = $this->attributeRepository->getList(
-                \Magento\Catalog\Model\Product::ENTITY,
+                Product::ENTITY,
                 $searchCriteria
             );
 
             foreach ($attributes->getItems() as $attribute) {
-                $additionalData = $attribute->getData('additional_data');
+                $code = $attribute->getAttributeCode();
+                $label = $attribute->getDefaultFrontendLabel() ?? $code;
                 $swatchType = $attribute->getData('swatch_input_type');
 
-                // Include visual and text swatches
-                if ($swatchType === 'visual' || $swatchType === 'text'
-                    || $attribute->getAttributeCode() === 'color'
-                ) {
-                    $options[] = [
-                        'value' => $attribute->getAttributeCode(),
-                        'label' => sprintf(
-                            '%s (%s)',
-                            $attribute->getDefaultFrontendLabel() ?? $attribute->getAttributeCode(),
-                            $attribute->getAttributeCode()
-                        ),
-                    ];
+                // Build a descriptive suffix
+                $suffix = $code;
+                if ($swatchType === 'visual') {
+                    $suffix .= ', swatch visual';
+                } elseif ($swatchType === 'text') {
+                    $suffix .= ', swatch text';
                 }
+
+                $options[] = [
+                    'value' => $code,
+                    'label' => sprintf('%s (%s)', $label, $suffix),
+                ];
             }
         } catch (\Exception $e) {
             // Fallback: at minimum offer 'color'
