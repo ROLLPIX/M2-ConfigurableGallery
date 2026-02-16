@@ -54,30 +54,27 @@ class AdminGallerySavePlugin
         $connection = $this->resourceConnection->getConnection();
         $tableName = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery_value');
 
+        // Only proceed if we have explicit color mapping data from the admin UI.
+        // Without this check, every product save would wipe existing mappings.
+        if (!is_array($colorMappingData) || empty($colorMappingData)) {
+            return $result;
+        }
+
         foreach ($mediaGallery['images'] as $image) {
             $valueId = $image['value_id'] ?? null;
             if ($valueId === null) {
                 continue;
             }
 
-            $associatedAttributes = null;
-
-            // Priority 1: rollpix_color_mapping from request (admin UI dropdown)
-            if (is_array($colorMappingData) && isset($colorMappingData[$valueId])) {
-                $associatedAttributes = $colorMappingData[$valueId];
-                if ($associatedAttributes === '' || $associatedAttributes === '0') {
-                    $associatedAttributes = null;
-                }
-            }
-            // Priority 2: associated_attributes already in the image data
-            elseif (isset($image['associated_attributes'])) {
-                $associatedAttributes = $image['associated_attributes'];
-                if ($associatedAttributes === '') {
-                    $associatedAttributes = null;
-                }
+            if (!isset($colorMappingData[$valueId])) {
+                continue;
             }
 
-            // Update the column
+            $associatedAttributes = $colorMappingData[$valueId];
+            if ($associatedAttributes === '' || $associatedAttributes === '0') {
+                $associatedAttributes = null;
+            }
+
             $connection->update(
                 $tableName,
                 ['associated_attributes' => $associatedAttributes],

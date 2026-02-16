@@ -7,22 +7,21 @@
  * Integrates with Magento's productGallery widget:
  * - Reads imageData.associated_attributes for initial value
  * - Writes back to imageData so it flows through media_gallery form submission
- * - Also maintains hidden inputs as fallback for AdminGallerySavePlugin
+ * - Injects rollpix_color_mapping into the UI Component form data source before save
  *
  * PRD §6.1 — Admin UI for color mapping.
  */
 define([
     'jquery',
-    'mage/translate'
-], function ($, $t) {
+    'mage/translate',
+    'uiRegistry'
+], function ($, $t, registry) {
     'use strict';
 
     return function (config) {
         var colorOptions = config.colorOptions || [];
         var existingMapping = config.existingMapping || {};
         var colorAttributeId = config.colorAttributeId || 0;
-        var inputName = config.inputName || 'rollpix_color_mapping';
-        var $hiddenContainer = null;
         var initialized = false;
 
         // Build lookup: attributeValue -> label
@@ -46,45 +45,23 @@ define([
             return 'attribute' + colorAttributeId + '-' + optionValue;
         }
 
-        // ── Hidden inputs (fallback for form submission) ─────────────
+        // ── Form data injection (Magento 2 UI Component form) ────────
 
-        function ensureHiddenContainer() {
-            if ($hiddenContainer && $hiddenContainer.closest('body').length) {
-                return;
-            }
+        /**
+         * Hook into the product form's save to inject rollpix_color_mapping
+         * into the data source. Magento 2 admin forms use UI Components —
+         * traditional hidden inputs are NOT submitted.
+         */
+        function hookFormSave() {
+            registry.get('product_form.product_form', function (form) {
+                var origSave = form.save;
 
-            var $form = $('#product_form, form[data-form="edit-product"], #product-edit-form').first();
+                form.save = function (redirect, data) {
+                    this.source.set('data.rollpix_color_mapping', existingMapping);
 
-            if (!$form.length) {
-                $form = $('[data-role="gallery"]').closest('form');
-            }
-
-            if (!$form.length) {
-                $form = $('body');
-            }
-
-            $hiddenContainer = $('<div id="rollpix-color-mapping-inputs" style="display:none;"></div>');
-            $form.append($hiddenContainer);
-
-            $.each(existingMapping, function (vid, val) {
-                setHiddenInput(vid, val);
+                    return origSave.call(this, redirect, data);
+                };
             });
-        }
-
-        function setHiddenInput(valueId, value) {
-            ensureHiddenContainer();
-
-            var inputId = 'rollpix_cm_' + valueId;
-            var $input = $hiddenContainer.find('#' + inputId);
-
-            if (!$input.length) {
-                $input = $('<input type="hidden" />')
-                    .attr('id', inputId)
-                    .attr('name', inputName + '[' + valueId + ']');
-                $hiddenContainer.append($input);
-            }
-
-            $input.val(value || '');
         }
 
         // ── Shared: apply a color change ─────────────────────────────
@@ -96,7 +73,6 @@ define([
         function applyColorChange(valueId, newValue) {
             valueId = String(valueId);
             existingMapping[valueId] = newValue;
-            setHiddenInput(valueId, newValue);
 
             // Update imageData on the thumbnail element
             var $imageEl = findImageElement(valueId);
@@ -299,7 +275,7 @@ define([
             }
 
             initialized = true;
-            ensureHiddenContainer();
+            hookFormSave();
 
             var dialogCheckTimeout = null;
             var thumbRefreshTimeout = null;
