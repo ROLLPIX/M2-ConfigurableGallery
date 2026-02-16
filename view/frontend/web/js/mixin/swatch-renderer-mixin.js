@@ -124,20 +124,49 @@ define([
                 var optionId = $swatch.attr('data-option-id')
                     || $swatch.attr('option-id');
 
-                if (optionId) {
+                if (!optionId) {
+                    return;
+                }
+
+                // After _super() runs in _OnClick, the 'selected' class reflects the new state.
+                // If the swatch no longer has 'selected', the user deselected it → show all images.
+                var isSelected = $swatch.hasClass('selected');
+                if (isSelected) {
                     this._rollpixSwitcher.switchColor(parseInt(optionId, 10));
+                } else {
+                    this._rollpixSwitcher.switchColor(null);
                 }
             },
 
             /**
-             * Override: prevent native gallery update for color attribute when Rollpix is active.
+             * Check if Rollpix is currently handling gallery updates.
+             */
+            _isRollpixHandlingGallery: function () {
+                return this._rollpixSwitcher && this._rollpixSwitcher.getCurrentColor() !== null;
+            },
+
+            /**
+             * Override: prevent native gallery update when Rollpix is active.
+             * Covers Magento versions that use _processUpdateGallery.
              */
             _processUpdateGallery: function (images) {
-                if (this._rollpixSwitcher && this._rollpixSwitcher.getCurrentColor() !== null) {
-                    // Rollpix is handling gallery updates — skip native behavior
+                if (this._isRollpixHandlingGallery()) {
                     return;
                 }
                 this._super(images);
+            },
+
+            /**
+             * Override: prevent native gallery update when Rollpix is active.
+             * In Magento 2.4.x, _loadMedia → updateBaseImage is the main gallery
+             * update path. Without blocking this, native code overwrites our
+             * filtered gallery immediately after we update it.
+             */
+            updateBaseImage: function (images, context, isInProductView) {
+                if (this._isRollpixHandlingGallery()) {
+                    return;
+                }
+                this._super(images, context, isInProductView);
             },
 
             /**
