@@ -52,11 +52,6 @@ class ModuleInfo extends Field
         return $html;
     }
 
-    protected function _decorateRowHtml(AbstractElement $element, string $html): string
-    {
-        return '<tr id="row_' . $element->getHtmlId() . '">' . $html . '</tr>';
-    }
-
     public function render(AbstractElement $element): string
     {
         $element->unsScope()->unsCanUseWebsiteValue()->unsCanUseDefaultValue();
