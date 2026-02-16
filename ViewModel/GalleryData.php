@@ -95,10 +95,19 @@ class GalleryData implements ArgumentInterface
         $availableColors = array_filter($availableColors, fn(string $key) => $key !== 'null');
         $availableColorIds = array_map('intval', $availableColors);
 
-        // Stock filtering
+        // Stock filtering — apply to mediaMapping so out-of-stock colors are excluded
         $colorsWithStock = $availableColorIds;
         if ($this->config->isStockFilterEnabled($storeId)) {
             $colorsWithStock = $this->stockFilter->getColorsWithStock($product, $storeId);
+            $mediaMapping = $this->stockFilter->filterColorMapping(
+                $mediaMapping,
+                $colorsWithStock,
+                $this->config->getOutOfStockBehavior($storeId)
+            );
+            // Recalculate available colors after filtering
+            $availableColors = array_keys($mediaMapping);
+            $availableColors = array_filter($availableColors, fn(string $key) => $key !== 'null');
+            $availableColorIds = array_map('intval', $availableColors);
         }
 
         // Determine default color

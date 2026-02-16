@@ -65,18 +65,30 @@ class EnrichGalleryJson
 
         $colorLabels = $this->colorMapping->getColorOptionLabels($product, $storeId);
         $mediaMapping = $this->colorMapping->getColorMediaMapping($product, $storeId);
-        $prefix = sprintf('attribute%d-', $colorAttributeId);
 
         // Build a value_id to associated_attributes map from the media mapping
         $valueIdToAttributes = $this->buildValueIdToAttributesMap($mediaMapping, $colorLabels);
 
-        // Enrich each gallery image with associated attributes and color label
-        foreach ($galleryImages as &$image) {
-            $valueId = $image['value_id'] ?? null;
-            if ($valueId !== null && isset($valueIdToAttributes[(int) $valueId])) {
-                $info = $valueIdToAttributes[(int) $valueId];
-                $image['associatedAttributes'] = $info['associated_attributes'];
-                $image['associatedColorLabel'] = $info['label'];
+        // Magento's getGalleryImagesJson() does NOT include value_id in the output.
+        // We need to get value_ids from the gallery collection and inject them.
+        $collectionValueIds = $this->extractValueIdsFromCollection($subject);
+
+        // Enrich each gallery image with value_id, associated attributes, and color label
+        foreach ($galleryImages as $index => &$image) {
+            $valueId = $image['value_id'] ?? $collectionValueIds[$index] ?? null;
+
+            if ($valueId !== null) {
+                $valueId = (int) $valueId;
+                $image['value_id'] = $valueId;
+
+                if (isset($valueIdToAttributes[$valueId])) {
+                    $info = $valueIdToAttributes[$valueId];
+                    $image['associatedAttributes'] = $info['associated_attributes'];
+                    $image['associatedColorLabel'] = $info['label'];
+                } else {
+                    $image['associatedAttributes'] = null;
+                    $image['associatedColorLabel'] = null;
+                }
             } else {
                 $image['associatedAttributes'] = null;
                 $image['associatedColorLabel'] = null;
@@ -120,6 +132,33 @@ class EnrichGalleryJson
         }
 
         return $map;
+    }
+
+    /**
+     * Extract value_ids from the gallery block's collection in iteration order.
+     * getGalleryImagesJson() iterates getGalleryImages() in the same order,
+     * so the array indices correspond to the JSON image indices.
+     *
+     * @param GalleryBlock $galleryBlock
+     * @return array<int, int> index => value_id
+     */
+    private function extractValueIdsFromCollection(GalleryBlock $galleryBlock): array
+    {
+        $valueIds = [];
+
+        try {
+            $collection = $galleryBlock->getGalleryImages();
+            foreach ($collection as $image) {
+                $vid = $image->getData('value_id');
+                $valueIds[] = $vid !== null ? (int) $vid : null;
+            }
+        } catch (\Exception $e) {
+            $this->logger->error('Rollpix ConfigurableGallery: Failed to extract value_ids from gallery', [
+                'exception' => $e->getMessage(),
+            ]);
+        }
+
+        return $valueIds;
     }
 
     private function shouldProcess(Product $product): bool
