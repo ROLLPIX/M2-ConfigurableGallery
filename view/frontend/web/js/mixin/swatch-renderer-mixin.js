@@ -78,30 +78,101 @@ define([
                 this._rollpixSwitcher.init();
                 this._rollpixInitialized = true;
 
-                // Re-apply preselection after Magento's gallery widget fully loads.
-                // Our preselection may run before Fotorama is initialized, and when
-                // Magento's gallery widget finishes loading, it resets Fotorama with
-                // ALL images, overriding our filtered view. This handler re-applies
-                // the filter after the gallery is fully ready.
-                this._bindRollpixGalleryReapply();
+                // Ensure gallery is filtered once Fotorama is ready.
+                // gallery:loaded may have already fired before this code runs
+                // (RequireJS modules load asynchronously), so we also poll for
+                // Fotorama readiness as a fallback.
+                this._ensureGalleryFiltered();
             },
 
             /**
-             * Bind gallery:loaded handler to re-apply filter after Magento resets Fotorama.
+             * Ensure the preselected color filter is applied once Fotorama is ready.
+             * Uses two strategies to handle all timing scenarios:
+             * 1. gallery:loaded event — for future resets after our binding
+             * 2. Polling — catches the case where gallery:loaded already fired
              */
-            _bindRollpixGalleryReapply: function () {
+            _ensureGalleryFiltered: function () {
                 var self = this;
                 var $gallery = $('[data-gallery-role="gallery-placeholder"]');
-                if ($gallery.length && this._rollpixSwitcher) {
-                    $gallery.on('gallery:loaded', function () {
-                        var currentColor = self._rollpixSwitcher.getCurrentColor();
-                        if (currentColor !== null) {
-                            setTimeout(function () {
-                                self._rollpixSwitcher.switchColor(currentColor, true);
-                            }, 50);
-                        }
-                    });
+                if (!$gallery.length || !this._rollpixSwitcher) {
+                    return;
                 }
+
+                var reapply = function () {
+                    var currentColor = self._rollpixSwitcher.getCurrentColor();
+
+                    // If no preselection from config, detect first visible swatch
+                    if (currentColor === null) {
+                        currentColor = self._getFirstVisibleColorOptionId();
+                        if (currentColor !== null) {
+                            self._rollpixSwitcher.switchColor(currentColor, true);
+                            return true;
+                        }
+                        return false;
+                    }
+
+                    self._rollpixSwitcher.switchColor(currentColor, true);
+                    return true;
+                };
+
+                // Strategy 1: gallery:loaded event (re-apply after every Magento reset)
+                $gallery.on('gallery:loaded.rollpix', function () {
+                    setTimeout(reapply, 100);
+                });
+
+                // Strategy 2: Poll until Fotorama is ready (handles the case where
+                // gallery:loaded already fired before we could bind the handler)
+                var attempts = 0;
+                var maxAttempts = 25;
+                var poll = function () {
+                    attempts++;
+                    var fotorama = $gallery.data('fotorama');
+                    if (!fotorama) {
+                        fotorama = $gallery.find('.fotorama').data('fotorama');
+                    }
+                    if (fotorama) {
+                        reapply();
+                        return;
+                    }
+                    if (attempts < maxAttempts) {
+                        setTimeout(poll, 200);
+                    }
+                };
+                setTimeout(poll, 200);
+            },
+
+            /**
+             * Get the first visible (non-disabled) color swatch option ID from the DOM.
+             * Leverages Magento's native stock validation which hides swatches for
+             * out-of-stock options, so we don't need our own stock detection here.
+             */
+            _getFirstVisibleColorOptionId: function () {
+                var rollpixConfig = this._getRollpixConfig();
+                if (!rollpixConfig || !rollpixConfig.colorAttributeId) {
+                    return null;
+                }
+
+                var colorAttrId = rollpixConfig.colorAttributeId;
+                var $colorAttr = this.element.find(
+                    '.swatch-attribute[data-attribute-id="' + colorAttrId + '"],' +
+                    '.swatch-attribute[attribute-id="' + colorAttrId + '"]'
+                );
+
+                if (!$colorAttr.length) {
+                    return null;
+                }
+
+                var $firstSwatch = $colorAttr
+                    .find('.swatch-option:not(.disabled):not([disabled])')
+                    .first();
+
+                if ($firstSwatch.length) {
+                    var optionId = $firstSwatch.attr('data-option-id')
+                        || $firstSwatch.attr('option-id');
+                    return optionId ? parseInt(optionId, 10) : null;
+                }
+
+                return null;
             },
 
             /**
