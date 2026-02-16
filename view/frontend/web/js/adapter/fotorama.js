@@ -20,6 +20,7 @@ define([
         this.switcher = gallerySwitcher;
         this.$gallery = $galleryElement || $('[data-gallery-role="gallery-placeholder"]');
         this.fotoramaInstance = null;
+        this._updateRetries = 0;
         this._bindEvents();
     }
 
@@ -49,13 +50,17 @@ define([
 
             var fotorama = this._getFotoramaInstance();
             if (!fotorama) {
-                // Fotorama not ready yet, try again shortly
-                var self = this;
-                setTimeout(function () {
-                    self._updateGallery(images, isInitial);
-                }, 200);
+                // Fotorama not ready yet, retry with max attempts
+                if (this._updateRetries < 15) {
+                    this._updateRetries++;
+                    var self = this;
+                    setTimeout(function () {
+                        self._updateGallery(images, isInitial);
+                    }, 200);
+                }
                 return;
             }
+            this._updateRetries = 0;
 
             var fotoramaData = this._convertToFotoramaFormat(images);
 

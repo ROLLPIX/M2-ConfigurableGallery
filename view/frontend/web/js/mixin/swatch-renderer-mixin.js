@@ -22,6 +22,7 @@ define([
             _rollpixSwitcher: null,
             _rollpixAdapter: null,
             _rollpixInitialized: false,
+            _rollpixInitRetries: 0,
 
             /**
              * Initialize Rollpix gallery switcher after widget creation.
@@ -33,6 +34,8 @@ define([
 
             /**
              * Set up the gallery switcher and adapter if rollpixGalleryConfig exists.
+             * Supports lazy initialization: if gallery images aren't available yet,
+             * waits for the gallery:loaded event or retries with a timeout.
              */
             _initRollpixGallery: function () {
                 if (this._rollpixInitialized) {
@@ -45,6 +48,30 @@ define([
                 }
 
                 var galleryImages = this._getRollpixGalleryImages();
+
+                if (!galleryImages || galleryImages.length === 0) {
+                    // Gallery images not available yet — defer initialization
+                    if (this._rollpixInitRetries < 10) {
+                        this._rollpixInitRetries++;
+                        var self = this;
+
+                        // Listen for Magento gallery:loaded event on first retry
+                        if (this._rollpixInitRetries === 1) {
+                            var $gallery = $('[data-gallery-role="gallery-placeholder"]');
+                            if ($gallery.length) {
+                                $gallery.on('gallery:loaded', function () {
+                                    self._initRollpixGallery();
+                                });
+                            }
+                        }
+
+                        // Also retry with timeout as fallback
+                        setTimeout(function () {
+                            self._initRollpixGallery();
+                        }, 300);
+                    }
+                    return;
+                }
 
                 this._rollpixSwitcher = new GallerySwitcher(rollpixConfig, galleryImages);
                 this._rollpixAdapter = new FotoramaAdapter(this._rollpixSwitcher);
@@ -72,6 +99,11 @@ define([
              * Handle swatch selection change for Rollpix gallery.
              */
             _handleRollpixSwatchChange: function ($swatch) {
+                // Try lazy init if not yet initialized
+                if (!this._rollpixSwitcher) {
+                    this._initRollpixGallery();
+                }
+
                 if (!this._rollpixSwitcher) {
                     return;
                 }
@@ -128,19 +160,35 @@ define([
 
             /**
              * Get gallery images array from the page.
+             * Multiple sources tried in priority order.
              */
             _getRollpixGalleryImages: function () {
-                // Try window global first
-                if (window.rollpixGalleryImages) {
+                // Source 1: Window global set by gallery_data.phtml (most reliable)
+                if (window.rollpixGalleryImages && window.rollpixGalleryImages.length) {
                     return window.rollpixGalleryImages;
                 }
 
-                // Try from mage/gallery widget data
                 var $gallery = $('[data-gallery-role="gallery-placeholder"]');
-                if ($gallery.length) {
-                    var galleryData = $gallery.data('mageGallery');
-                    if (galleryData && galleryData.options && galleryData.options.data) {
-                        return galleryData.options.data;
+                if (!$gallery.length) {
+                    return [];
+                }
+
+                // Source 2: From Magento's gallery widget data (after widget init)
+                var galleryData = $gallery.data('mageGallery');
+                if (galleryData && galleryData.options && galleryData.options.data) {
+                    return galleryData.options.data;
+                }
+
+                // Source 3: From gallery API (after full Fotorama init)
+                var galleryApi = $gallery.data('gallery');
+                if (galleryApi && typeof galleryApi.returnCurrentImages === 'function') {
+                    try {
+                        var images = galleryApi.returnCurrentImages();
+                        if (images && images.length) {
+                            return images;
+                        }
+                    } catch (e) {
+                        // Gallery API not ready
                     }
                 }
 
