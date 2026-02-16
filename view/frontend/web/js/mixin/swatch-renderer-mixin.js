@@ -77,6 +77,31 @@ define([
                 this._rollpixAdapter = new FotoramaAdapter(this._rollpixSwitcher);
                 this._rollpixSwitcher.init();
                 this._rollpixInitialized = true;
+
+                // Re-apply preselection after Magento's gallery widget fully loads.
+                // Our preselection may run before Fotorama is initialized, and when
+                // Magento's gallery widget finishes loading, it resets Fotorama with
+                // ALL images, overriding our filtered view. This handler re-applies
+                // the filter after the gallery is fully ready.
+                this._bindRollpixGalleryReapply();
+            },
+
+            /**
+             * Bind gallery:loaded handler to re-apply filter after Magento resets Fotorama.
+             */
+            _bindRollpixGalleryReapply: function () {
+                var self = this;
+                var $gallery = $('[data-gallery-role="gallery-placeholder"]');
+                if ($gallery.length && this._rollpixSwitcher) {
+                    $gallery.on('gallery:loaded', function () {
+                        var currentColor = self._rollpixSwitcher.getCurrentColor();
+                        if (currentColor !== null) {
+                            setTimeout(function () {
+                                self._rollpixSwitcher.switchColor(currentColor, true);
+                            }, 50);
+                        }
+                    });
+                }
             },
 
             /**
