@@ -235,10 +235,14 @@ define([
             },
 
             /**
-             * Check if Rollpix is currently handling gallery updates.
+             * Check if Rollpix is handling gallery updates.
+             * Returns true once the switcher is initialized — our module is the
+             * sole controller of gallery images from that point forward, even
+             * when no specific color is selected (deselection still filters
+             * through colorMapping which respects stock filtering).
              */
             _isRollpixHandlingGallery: function () {
-                return this._rollpixSwitcher && this._rollpixSwitcher.getCurrentColor() !== null;
+                return this._rollpixInitialized && this._rollpixSwitcher;
             },
 
             /**

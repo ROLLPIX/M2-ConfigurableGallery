@@ -83,15 +83,89 @@ define([], function () {
          */
         getFilteredImages: function (optionId) {
             if (optionId === null || optionId === undefined) {
-                return {
-                    images: this.galleryImages.slice(),
-                    allMedia: this.galleryImages.slice(),
-                    colorLabel: null
-                };
+                // No color selected — return images from all mapped colors.
+                // colorMapping already excludes out-of-stock colors (backend filters them
+                // when stock_filter_enabled=1 and behavior=hide), so this naturally
+                // respects stock filtering without needing extra client-side checks.
+                return this._getAllMappedImages();
             }
 
             var optionKey = String(optionId);
             var colorInfo = this.colorMapping[optionKey];
+
+            return this._filterByValueIds(optionId, colorInfo);
+        },
+
+        /**
+         * Get images from ALL colors present in colorMapping + generics.
+         * Since colorMapping is already stock-filtered by the backend,
+         * this excludes out-of-stock color images automatically.
+         */
+        _getAllMappedImages: function () {
+            var showGeneric = this.config.showGenericImages !== false;
+            var allowedValueIds = [];
+
+            for (var key in this.colorMapping) {
+                if (!this.colorMapping.hasOwnProperty(key)) {
+                    continue;
+                }
+                if (key === 'null' && !showGeneric) {
+                    continue;
+                }
+                var info = this.colorMapping[key];
+                allowedValueIds = allowedValueIds.concat(info.images || [], info.videos || []);
+            }
+
+            var filteredImages = [];
+
+            for (var i = 0; i < this.galleryImages.length; i++) {
+                var img = this.galleryImages[i];
+                var valueId = img.value_id || img.valueId;
+
+                if (valueId !== undefined && valueId !== null) {
+                    if (this._inArray(parseInt(valueId, 10), allowedValueIds)) {
+                        filteredImages.push(img);
+                    }
+                } else {
+                    // Fallback: check associatedAttributes
+                    var assoc = img.associatedAttributes || img.associated_attributes;
+                    if (assoc === null || assoc === undefined || assoc === '') {
+                        if (showGeneric) {
+                            filteredImages.push(img);
+                        }
+                    } else {
+                        // Check if matches any color in the mapping
+                        var matched = false;
+                        for (var mapKey in this.colorMapping) {
+                            if (mapKey !== 'null' && this.colorMapping.hasOwnProperty(mapKey)) {
+                                if (this._matchesColor(assoc, parseInt(mapKey, 10))) {
+                                    matched = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (matched) {
+                            filteredImages.push(img);
+                        }
+                    }
+                }
+            }
+
+            filteredImages.sort(function (a, b) {
+                return (parseInt(a.position, 10) || 0) - (parseInt(b.position, 10) || 0);
+            });
+
+            return {
+                images: filteredImages,
+                allMedia: filteredImages,
+                colorLabel: null
+            };
+        },
+
+        /**
+         * Filter images for a specific color option ID.
+         */
+        _filterByValueIds: function (optionId, colorInfo) {
             var genericInfo = this.colorMapping['null'];
             var showGeneric = this.config.showGenericImages !== false;
 
@@ -103,7 +177,6 @@ define([], function () {
 
             var allowedValueIds = colorValueIds.concat(genericValueIds);
 
-            // Filter gallery images by value_id
             for (var i = 0; i < this.galleryImages.length; i++) {
                 var img = this.galleryImages[i];
                 var valueId = img.value_id || img.valueId;
@@ -113,10 +186,8 @@ define([], function () {
                         filteredImages.push(img);
                     }
                 } else {
-                    // Fallback: filter by associatedAttributes field
                     var assoc = img.associatedAttributes || img.associated_attributes;
                     if (assoc === null || assoc === undefined || assoc === '') {
-                        // Generic image
                         if (showGeneric) {
                             filteredImages.push(img);
                         }
@@ -126,7 +197,6 @@ define([], function () {
                 }
             }
 
-            // Sort by position
             filteredImages.sort(function (a, b) {
                 return (parseInt(a.position, 10) || 0) - (parseInt(b.position, 10) || 0);
             });
