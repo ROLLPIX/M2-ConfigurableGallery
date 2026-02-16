@@ -1,6 +1,8 @@
 /**
- * Admin UI component: adds color dropdown to the Image Detail dialog panel
- * and color badges on gallery thumbnails.
+ * Admin UI component: adds color dropdown to gallery thumbnails and Image Detail dialog.
+ *
+ * Each thumbnail gets a compact <select> at the top for quick color assignment.
+ * The Image Detail dialog also gets a full dropdown after the Role section.
  *
  * Integrates with Magento's productGallery widget:
  * - Reads imageData.associated_attributes for initial value
@@ -44,22 +46,8 @@ define([
             return 'attribute' + colorAttributeId + '-' + optionValue;
         }
 
-        /**
-         * Get the human-readable color label for an associated_attributes value.
-         */
-        function getColorLabel(attrValue) {
-            if (!attrValue) {
-                return '';
-            }
-
-            return colorLabelMap[attrValue] || '';
-        }
-
         // ── Hidden inputs (fallback for form submission) ─────────────
 
-        /**
-         * Create the hidden input container inside the product form.
-         */
         function ensureHiddenContainer() {
             if ($hiddenContainer && $hiddenContainer.closest('body').length) {
                 return;
@@ -78,15 +66,11 @@ define([
             $hiddenContainer = $('<div id="rollpix-color-mapping-inputs" style="display:none;"></div>');
             $form.append($hiddenContainer);
 
-            // Seed with existing mapping from PHP
             $.each(existingMapping, function (vid, val) {
                 setHiddenInput(vid, val);
             });
         }
 
-        /**
-         * Create or update a hidden input for a specific value_id.
-         */
         function setHiddenInput(valueId, value) {
             ensureHiddenContainer();
 
@@ -103,10 +87,122 @@ define([
             $input.val(value || '');
         }
 
+        // ── Shared: apply a color change ─────────────────────────────
+
+        /**
+         * Apply a color selection to a given value_id.
+         * Updates imageData, existingMapping, hidden input, and syncs all UI elements.
+         */
+        function applyColorChange(valueId, newValue) {
+            valueId = String(valueId);
+            existingMapping[valueId] = newValue;
+            setHiddenInput(valueId, newValue);
+
+            // Update imageData on the thumbnail element
+            var $imageEl = findImageElement(valueId);
+
+            if ($imageEl && $imageEl.length) {
+                var imgData = $imageEl.data('imageData');
+
+                if (imgData) {
+                    imgData.associated_attributes = newValue;
+                }
+            }
+
+            // Sync all dropdowns with this value_id
+            $('[data-role="rollpix-thumb-select"][data-value-id="' + valueId + '"]').val(newValue);
+            $('[data-role="rollpix-color-select"][data-value-id="' + valueId + '"]').val(newValue);
+        }
+
+        /**
+         * Find the gallery thumbnail element for a given value_id.
+         */
+        function findImageElement(valueId) {
+            var $found = null;
+
+            $('[data-role="image"], .gallery .image').not('.removed').each(function () {
+                var imgData = $(this).data('imageData');
+
+                if (imgData && String(imgData.value_id) === String(valueId)) {
+                    $found = $(this);
+                    return false;
+                }
+            });
+
+            return $found;
+        }
+
+        // ── Thumbnail compact dropdowns ──────────────────────────────
+
+        /**
+         * Build a compact <select> for a thumbnail.
+         */
+        function buildThumbnailSelect(valueId, currentValue) {
+            var $select = $('<select></select>')
+                .addClass('rollpix-thumb-select')
+                .attr('data-role', 'rollpix-thumb-select')
+                .attr('data-value-id', valueId)
+                .attr('title', $t('Assign color'));
+
+            colorOptions.forEach(function (option) {
+                var attrValue = toAttributeValue(option.value);
+                var label = option.value === '' ? '\u2014' : option.label;
+                var $opt = $('<option></option>').val(attrValue).text(label);
+
+                if (attrValue === currentValue) {
+                    $opt.prop('selected', true);
+                }
+
+                $select.append($opt);
+            });
+
+            return $select;
+        }
+
+        /**
+         * Inject a compact dropdown into a single thumbnail element.
+         */
+        function injectThumbnailSelect($imageEl) {
+            if ($imageEl.find('[data-role="rollpix-thumb-select"]').length) {
+                return;
+            }
+
+            var imgData = $imageEl.data('imageData');
+
+            if (!imgData || !imgData.value_id) {
+                return;
+            }
+
+            var vid = String(imgData.value_id);
+            var currentValue = imgData.associated_attributes || existingMapping[vid] || '';
+
+            var $select = buildThumbnailSelect(vid, currentValue);
+            $imageEl.append($select);
+
+            // Stop click propagation so clicking the dropdown doesn't open Image Detail
+            $select.on('click', function (e) {
+                e.stopPropagation();
+            });
+
+            $select.on('change', function (e) {
+                e.stopPropagation();
+                applyColorChange(vid, $(this).val());
+            });
+        }
+
+        /**
+         * Inject dropdowns on all visible gallery thumbnails.
+         */
+        function refreshAllThumbnails() {
+            $('[data-role="image"], .gallery .image').not('.removed').each(function () {
+                injectThumbnailSelect($(this));
+            });
+        }
+
         // ── Image Detail dialog injection ────────────────────────────
 
         /**
-         * Build the color dropdown field using Magento admin markup classes.
+         * Build the color dropdown field for the Image Detail dialog.
          */
         function buildDialogField(valueId, currentValue) {
             var html = '<div class="admin__field field-rollpix-color" data-role="rollpix-color-field">';
@@ -137,7 +233,6 @@ define([
 
         /**
          * Inject the color dropdown into the currently visible Image Detail dialog.
-         * Called when the slide-panel opens (detected via MutationObserver).
          */
         function injectIntoDialog() {
             var $dialog = $('[data-role="dialog"]').filter(':visible');
@@ -150,12 +245,10 @@ define([
                 return;
             }
 
-            // Already injected for this dialog instance
             if ($dialog.find('[data-role="rollpix-color-field"]').length > 0) {
                 return;
             }
 
-            // Find the active image to get its data
             var $activeImage = $('[data-role="image"].active, .image.active').first();
 
             if (!$activeImage.length) {
@@ -176,84 +269,25 @@ define([
 
             valueId = String(valueId);
 
-            // Read current value: prefer imageData, fallback to existingMapping
             var currentValue = imageData.associated_attributes || existingMapping[valueId] || '';
-
             var fieldHtml = buildDialogField(valueId, currentValue);
 
-            // Insert after the Role section
             var $roleField = $dialog.find('.field-image-role');
 
             if ($roleField.length) {
                 $roleField.after(fieldHtml);
             } else {
-                // Fallback: insert before Image Size
                 var $sizeField = $dialog.find('[data-role="size"], .field-image-size');
 
                 if ($sizeField.length) {
                     $sizeField.before(fieldHtml);
                 } else {
-                    // Last resort: append to fieldset
                     $dialog.find('.admin__fieldset, fieldset').first().append(fieldHtml);
                 }
             }
 
-            // Bind change event on the dropdown
             $dialog.find('[data-role="rollpix-color-select"]').on('change', function () {
-                var newValue = $(this).val();
-                var vid = String($(this).data('value-id'));
-
-                // Update the imageData object directly (flows through gallery form save)
-                imageData.associated_attributes = newValue;
-
-                // Also update our tracking
-                existingMapping[vid] = newValue;
-
-                // Hidden input fallback
-                setHiddenInput(vid, newValue);
-
-                // Refresh the thumbnail badge
-                updateThumbnailBadge($activeImage, newValue);
-            });
-        }
-
-        // ── Thumbnail badges ─────────────────────────────────────────
-
-        /**
-         * Update the color badge on a single gallery thumbnail element.
-         */
-        function updateThumbnailBadge($imageEl, attrValue) {
-            var label = getColorLabel(attrValue);
-            var $badge = $imageEl.find('.rollpix-color-badge');
-
-            if (label) {
-                if (!$badge.length) {
-                    $badge = $('<span class="rollpix-color-badge"></span>');
-                    $imageEl.append($badge);
-                }
-
-                $badge.text(label).attr('title', label).show();
-            } else {
-                $badge.remove();
-            }
-        }
-
-        /**
-         * Add/refresh color badges on all gallery thumbnails.
-         */
-        function refreshAllBadges() {
-            $('[data-role="image"], .gallery .image').not('.removed').each(function () {
-                var $el = $(this);
-                var imgData = $el.data('imageData');
-
-                if (!imgData || !imgData.value_id) {
-                    return;
-                }
-
-                var vid = String(imgData.value_id);
-                var attrValue = imgData.associated_attributes || existingMapping[vid] || '';
-
-                updateThumbnailBadge($el, attrValue);
+                applyColorChange($(this).data('value-id'), $(this).val());
             });
         }
 
@@ -267,9 +301,8 @@ define([
             initialized = true;
             ensureHiddenContainer();
 
-            // MutationObserver: detect when the Image Detail dialog appears
             var dialogCheckTimeout = null;
-            var badgeRefreshTimeout = null;
+            var thumbRefreshTimeout = null;
 
             var observer = new MutationObserver(function () {
                 // Check for newly visible dialog
@@ -282,9 +315,9 @@ define([
                     }
                 }, 150);
 
-                // Refresh badges when thumbnails change
-                clearTimeout(badgeRefreshTimeout);
-                badgeRefreshTimeout = setTimeout(refreshAllBadges, 500);
+                // Refresh thumbnail dropdowns when DOM changes
+                clearTimeout(thumbRefreshTimeout);
+                thumbRefreshTimeout = setTimeout(refreshAllThumbnails, 500);
             });
 
             observer.observe(document.body, {
@@ -294,16 +327,16 @@ define([
                 attributeFilter: ['class', 'style']
             });
 
-            // Initial badge refresh (gallery may render after our script)
-            setTimeout(refreshAllBadges, 2000);
-            setTimeout(refreshAllBadges, 5000);
+            // Initial injection (gallery may render after our script)
+            setTimeout(refreshAllThumbnails, 2000);
+            setTimeout(refreshAllThumbnails, 5000);
 
             // Re-check when the Images tab is opened
             $(document).on(
                 'click',
                 '[data-index="gallery"], [data-tab="image-management"]',
                 function () {
-                    setTimeout(refreshAllBadges, 800);
+                    setTimeout(refreshAllThumbnails, 800);
                 }
             );
         }
