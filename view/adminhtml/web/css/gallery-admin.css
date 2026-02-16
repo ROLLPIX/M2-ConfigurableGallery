@@ -1,0 +1,30 @@
+/**
+ * Admin styles for Rollpix ConfigurableGallery color mapping UI.
+ */
+
+.rollpix-color-mapping {
+    margin-top: 5px;
+    padding: 3px 0;
+}
+
+.rollpix-color-mapping label {
+    font-size: 11px;
+    color: #666;
+    display: block;
+    margin-bottom: 2px;
+}
+
+.rollpix-color-select {
+    width: 100%;
+    max-width: 200px;
+    font-size: 12px;
+    padding: 3px 5px;
+    border: 1px solid #adadad;
+    border-radius: 3px;
+    background-color: #fff;
+}
+
+.rollpix-color-select:focus {
+    border-color: #007bdb;
+    box-shadow: 0 0 0 1px #007bdb;
+}

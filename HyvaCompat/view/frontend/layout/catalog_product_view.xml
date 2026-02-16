@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!--
+    Hyva layout: injects the Alpine.js gallery switcher component into the product page.
+    Replaces the RequireJS-based approach with Alpine.js native events.
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <body>
+        <referenceContainer name="content">
+            <block class="Magento\Framework\View\Element\Template"
+                   name="rollpix.configurable.gallery.hyva.switcher"
+                   template="Rollpix_ConfigurableGalleryHyvaCompat::product/gallery-switcher.phtml"
+                   after="-">
+                <arguments>
+                    <argument name="gallery_data_view_model" xsi:type="object">
+                        Rollpix\ConfigurableGallery\ViewModel\GalleryData
+                    </argument>
+                </arguments>
+            </block>
+        </referenceContainer>
+    </body>
+</page>

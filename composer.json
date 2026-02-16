@@ -1,0 +1,29 @@
+{
+    "name": "rollpix/module-configurable-gallery",
+    "description": "Configurable product gallery with color mapping, video support, and multi-gallery compatibility",
+    "type": "magento2-module",
+    "license": "proprietary",
+    "version": "1.0.0",
+    "require": {
+        "php": ">=8.1 <8.5",
+        "magento/module-catalog": "*",
+        "magento/module-configurable-product": "*",
+        "magento/module-swatches": "*",
+        "magento/module-eav": "*",
+        "magento/module-checkout": "*",
+        "magento/module-media-storage": "*"
+    },
+    "suggest": {
+        "rollpix/module-product-gallery-style": "For Rollpix Gallery adapter",
+        "rollpix/module-hover-slider": "For PLP slider compatibility",
+        "rollpix/module-image-flip-hover": "For PLP image flip compatibility",
+        "amasty/module-conf": "For Amasty Color Swatches adapter",
+        "hyva-themes/magento2-default-theme": "For Hyva adapter (HyvaCompat sub-module)"
+    },
+    "autoload": {
+        "files": ["registration.php"],
+        "psr-4": {
+            "Rollpix\\ConfigurableGallery\\": ""
+        }
+    }
+}

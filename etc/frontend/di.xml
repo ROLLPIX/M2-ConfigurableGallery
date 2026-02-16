@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<!--
+    Frontend-area dependency injection for Rollpix_ConfigurableGallery.
+    Registers PLP plugins (PRD §8.7).
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+
+    <!--
+        PLP: Change product thumbnail when swatch is selected.
+        sortOrder=10: base PLP swatch plugin.
+    -->
+    <type name="Magento\Swatches\Helper\Data">
+        <plugin name="rollpix_cg_plp_swatch_image"
+                type="Rollpix\ConfigurableGallery\Plugin\Plp\SwatchImagePlugin"
+                sortOrder="10"/>
+    </type>
+
+    <!--
+        PLP Compat: HoverSlider — filter slider images by color.
+        sortOrder=20: runs after HoverSlider's afterToHtml (sortOrder=10).
+        Always registered but checks ModuleManager::isEnabled('Rollpix_HoverSlider') internally.
+    -->
+    <type name="Magento\Catalog\Block\Product\Image">
+        <plugin name="rollpix_cg_plp_hoverslider_compat"
+                type="Rollpix\ConfigurableGallery\Plugin\Plp\HoverSliderCompatPlugin"
+                sortOrder="20"/>
+    </type>
+
+    <!--
+        PLP Compat: ImageFlipHover — update flip image by color.
+        sortOrder=110: runs after ImageFlipHover's afterToHtml (sortOrder=100).
+        Always registered but checks ModuleManager::isEnabled('Rollpix_ImageFlipHover') internally.
+    -->
+    <type name="Magento\Catalog\Block\Product\Image">
+        <plugin name="rollpix_cg_plp_imageflip_compat"
+                type="Rollpix\ConfigurableGallery\Plugin\Plp\ImageFlipCompatPlugin"
+                sortOrder="110"/>
+    </type>
+</config>

@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<!-- Default configuration values for Rollpix ConfigurableGallery (PRD §9). -->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
+    <default>
+        <rollpix_configurable_gallery>
+            <general>
+                <enabled>1</enabled>
+                <color_attribute_code>color</color_attribute_code>
+                <show_generic_images>1</show_generic_images>
+                <preselect_color>1</preselect_color>
+                <deep_link_enabled>1</deep_link_enabled>
+                <update_url_on_select>1</update_url_on_select>
+            </general>
+            <stock>
+                <stock_filter_enabled>0</stock_filter_enabled>
+                <out_of_stock_behavior>hide</out_of_stock_behavior>
+            </stock>
+            <propagation>
+                <propagation_mode>disabled</propagation_mode>
+                <propagation_roles>image,small_image,thumbnail</propagation_roles>
+                <clean_before_propagate>1</clean_before_propagate>
+            </propagation>
+            <cart>
+                <cart_image_override>1</cart_image_override>
+            </cart>
+            <advanced>
+                <debug_mode>0</debug_mode>
+                <gallery_adapter>auto</gallery_adapter>
+            </advanced>
+        </rollpix_configurable_gallery>
+    </default>
+</config>

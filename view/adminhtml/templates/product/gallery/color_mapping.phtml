@@ -1,0 +1,26 @@
+<?php
+/**
+ * @var \Rollpix\ConfigurableGallery\Block\Adminhtml\Product\Gallery\ColorMapping $block
+ */
+
+if (!$block->shouldRender()) {
+    return;
+}
+
+$colorOptionsJson = $block->getColorOptionsJson();
+$existingMappingJson = $block->getExistingMappingJson();
+$colorAttributeId = $block->getColorAttributeId();
+?>
+
+<script type="text/x-magento-init">
+{
+    "*": {
+        "Rollpix_ConfigurableGallery/js/gallery-color-mapping": {
+            "colorOptions": <?= /* @noEscape */ $colorOptionsJson ?>,
+            "existingMapping": <?= /* @noEscape */ $existingMappingJson ?>,
+            "colorAttributeId": <?= (int) $colorAttributeId ?>,
+            "inputName": "rollpix_color_mapping"
+        }
+    }
+}
+</script>

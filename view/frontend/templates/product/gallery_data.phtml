@@ -1,0 +1,30 @@
+<?php
+/**
+ * Template that injects rollpixGalleryConfig JSON into the product page (PRD §6.5).
+ * This data is consumed by gallery-switcher.js for color-based gallery filtering.
+ *
+ * @var \Rollpix\ConfigurableGallery\ViewModel\GalleryData $galleryDataViewModel
+ * @var \Magento\Framework\Escaper $escaper
+ */
+
+$galleryDataViewModel = $block->getData('gallery_data_view_model');
+if (!$galleryDataViewModel || !$galleryDataViewModel->isEnabled()) {
+    return;
+}
+
+$galleryConfigJson = $galleryDataViewModel->getGalleryConfigJson();
+?>
+
+<script>
+    window.rollpixGalleryConfig = <?= /* @noEscape */ $galleryConfigJson ?>;
+</script>
+
+<script type="text/x-magento-init">
+{
+    "*": {
+        "Rollpix_ConfigurableGallery/js/gallery-init": {
+            "galleryConfig": <?= /* @noEscape */ $galleryConfigJson ?>
+        }
+    }
+}
+</script>

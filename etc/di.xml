@@ -1,0 +1,67 @@
+<?xml version="1.0"?>
+<!--
+    Core dependency injection for Rollpix_ConfigurableGallery.
+    Registers plugins and optional MSI dependencies.
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+
+    <!--
+        Plugin: Include associated_attributes column in gallery queries.
+        sortOrder=10: base plugin, runs before any third-party gallery plugins.
+    -->
+    <type name="Magento\Catalog\Model\ResourceModel\Product\Gallery">
+        <plugin name="rollpix_cg_add_associated_attributes"
+                type="Rollpix\ConfigurableGallery\Plugin\AddAssociatedAttributesToGallery"
+                sortOrder="10"/>
+    </type>
+
+    <!--
+        Plugin: Enrich gallery JSON with associatedAttributes and rollpixGalleryConfig.
+        sortOrder=10: base plugin for frontend gallery data.
+    -->
+    <type name="Magento\Catalog\Block\Product\View\Gallery">
+        <plugin name="rollpix_cg_enrich_gallery_json"
+                type="Rollpix\ConfigurableGallery\Plugin\EnrichGalleryJson"
+                sortOrder="10"/>
+    </type>
+
+    <!--
+        Plugin: Override cart item image with color-specific image.
+        sortOrder=10: base plugin, no expected conflicts.
+    -->
+    <type name="Magento\Checkout\CustomerData\AbstractItem">
+        <plugin name="rollpix_cg_cart_item_image"
+                type="Rollpix\ConfigurableGallery\Plugin\CartItemImagePlugin"
+                sortOrder="10"/>
+    </type>
+
+    <!--
+        StockFilter: inject MSI dependencies as nullable.
+        When Magento_InventorySales is not installed, these will be null
+        and the class falls back to legacy stock check.
+    -->
+    <type name="Rollpix\ConfigurableGallery\Model\StockFilter">
+        <arguments>
+            <argument name="areProductsSalable" xsi:type="null"/>
+            <argument name="stockResolver" xsi:type="null"/>
+        </arguments>
+    </type>
+
+    <!-- Register CLI commands -->
+    <type name="Magento\Framework\Console\CommandListInterface">
+        <arguments>
+            <argument name="commands" xsi:type="array">
+                <item name="rollpix_gallery_diagnose" xsi:type="object">
+                    Rollpix\ConfigurableGallery\Console\Command\DiagnoseCommand\Proxy
+                </item>
+                <item name="rollpix_gallery_propagate" xsi:type="object">
+                    Rollpix\ConfigurableGallery\Console\Command\PropagateCommand\Proxy
+                </item>
+                <item name="rollpix_gallery_migrate" xsi:type="object">
+                    Rollpix\ConfigurableGallery\Console\Command\MigrateCommand\Proxy
+                </item>
+            </argument>
+        </arguments>
+    </type>
+</config>

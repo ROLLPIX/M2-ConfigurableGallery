@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<!--
+    Injects the color mapping block and admin CSS into the product edit page.
+    Only renders for configurable products with module enabled (checked in Block::shouldRender).
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <head>
+        <css src="Rollpix_ConfigurableGallery::css/gallery-admin.css"/>
+    </head>
+    <body>
+        <referenceContainer name="content">
+            <block class="Rollpix\ConfigurableGallery\Block\Adminhtml\Product\Gallery\ColorMapping"
+                   name="rollpix.configurable.gallery.color.mapping"
+                   template="Rollpix_ConfigurableGallery::product/gallery/color_mapping.phtml"/>
+        </referenceContainer>
+    </body>
+</page>

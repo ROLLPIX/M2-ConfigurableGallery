@@ -1,0 +1,157 @@
+<?xml version="1.0"?>
+<!--
+    System configuration for Rollpix ConfigurableGallery (PRD §9).
+    Path: Stores > Configuration > Rollpix > Configurable Gallery
+    14 configuration options organized in 5 groups.
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Config:etc/system_file.xsd">
+    <system>
+        <tab id="rollpix" translate="label" sortOrder="400">
+            <label>Rollpix</label>
+        </tab>
+        <section id="rollpix_configurable_gallery" translate="label" sortOrder="10"
+                 showInDefault="1" showInWebsite="1" showInStore="1">
+            <label>Galería Configurable</label>
+            <tab>rollpix</tab>
+            <resource>Rollpix_ConfigurableGallery::config</resource>
+
+            <!-- §9.1 General -->
+            <group id="general" translate="label" sortOrder="10"
+                   showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>General</label>
+
+                <field id="enabled" translate="label comment" type="select" sortOrder="10"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Habilitar Módulo</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Habilita o deshabilita el módulo globalmente.</comment>
+                </field>
+
+                <field id="color_attribute_code" translate="label comment" type="select" sortOrder="20"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Atributo de Color</label>
+                    <source_model>Rollpix\ConfigurableGallery\Model\Config\Source\SwatchAttributes</source_model>
+                    <comment>Atributo visual principal para el mapping de imágenes. Generalmente "color".</comment>
+                </field>
+
+                <field id="show_generic_images" translate="label comment" type="select" sortOrder="30"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Mostrar Imágenes Genéricas</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Mostrar imágenes sin color asignado junto con las del color seleccionado.</comment>
+                </field>
+
+                <field id="preselect_color" translate="label comment" type="select" sortOrder="40"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Preseleccionar Color</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Preseleccionar un color automáticamente al cargar la ficha de producto.</comment>
+                </field>
+
+                <field id="deep_link_enabled" translate="label comment" type="select" sortOrder="50"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Deep Link por Color</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Permite abrir un producto con un color preseleccionado vía URL (#color=318 o ?color=rojo).</comment>
+                </field>
+
+                <field id="update_url_on_select" translate="label comment" type="select" sortOrder="60"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Actualizar URL al Seleccionar</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Actualizar URL hash al seleccionar un swatch (permite copiar/compartir URL con color).</comment>
+                </field>
+            </group>
+
+            <!-- §9.2 Stock -->
+            <group id="stock" translate="label" sortOrder="20"
+                   showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Stock</label>
+
+                <field id="stock_filter_enabled" translate="label comment" type="select" sortOrder="10"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Filtrar por Stock</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Filtrar galería por disponibilidad de stock. Los colores sin stock se ocultan o atenúan.</comment>
+                </field>
+
+                <field id="out_of_stock_behavior" translate="label comment" type="select" sortOrder="20"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Comportamiento Sin Stock</label>
+                    <source_model>Rollpix\ConfigurableGallery\Model\Config\Source\OutOfStockBehavior</source_model>
+                    <comment>Qué hacer con las imágenes de colores sin stock.</comment>
+                    <depends>
+                        <field id="stock_filter_enabled">1</field>
+                    </depends>
+                </field>
+            </group>
+
+            <!-- §9.3 Propagación -->
+            <group id="propagation" translate="label" sortOrder="30"
+                   showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Propagación</label>
+
+                <field id="propagation_mode" translate="label comment" type="select" sortOrder="10"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Modo de Propagación</label>
+                    <source_model>Rollpix\ConfigurableGallery\Model\Config\Source\PropagationMode</source_model>
+                    <comment>Cómo propagar imágenes del configurable a los simples. "Desactivada" = imágenes solo en el padre.</comment>
+                </field>
+
+                <field id="propagation_roles" translate="label comment" type="multiselect" sortOrder="20"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Roles a Propagar</label>
+                    <source_model>Rollpix\ConfigurableGallery\Model\Config\Source\ImageRoles</source_model>
+                    <comment>Qué roles de imagen propagar a los simples.</comment>
+                    <depends>
+                        <field id="propagation_mode" separator=",">automatic,manual</field>
+                    </depends>
+                </field>
+
+                <field id="clean_before_propagate" translate="label comment" type="select" sortOrder="30"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Limpiar Antes de Propagar</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Limpiar imágenes propagadas anteriormente antes de re-propagar.</comment>
+                    <depends>
+                        <field id="propagation_mode" separator=",">automatic,manual</field>
+                    </depends>
+                </field>
+            </group>
+
+            <!-- §9.4 Cart/Checkout -->
+            <group id="cart" translate="label" sortOrder="40"
+                   showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Carrito / Checkout</label>
+
+                <field id="cart_image_override" translate="label comment" type="select" sortOrder="10"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Imagen por Color en Carrito</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Mostrar la imagen del color seleccionado en carrito y checkout (solo cuando propagación está desactivada).</comment>
+                </field>
+            </group>
+
+            <!-- §9.5 Avanzado -->
+            <group id="advanced" translate="label" sortOrder="50"
+                   showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Avanzado</label>
+
+                <field id="debug_mode" translate="label comment" type="select" sortOrder="10"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Modo Debug</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Log detallado en var/log/rollpix_gallery.log. Solo para desarrollo.</comment>
+                </field>
+
+                <field id="gallery_adapter" translate="label comment" type="select" sortOrder="20"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Adaptador de Galería</label>
+                    <source_model>Rollpix\ConfigurableGallery\Model\Config\Source\GalleryAdapter</source_model>
+                    <comment>Override manual del adaptador. "Auto" detecta automáticamente la galería activa.</comment>
+                </field>
+            </group>
+        </section>
+    </system>
+</config>

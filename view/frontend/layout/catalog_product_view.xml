@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<!--
+    Injects rollpixGalleryConfig JSON data into the product detail page.
+    The template outputs a <script> tag with the gallery configuration
+    that gallery-switcher.js and adapters consume.
+    Only renders for configurable products with rollpix_gallery_enabled=1.
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <body>
+        <referenceContainer name="content">
+            <block class="Magento\Framework\View\Element\Template"
+                   name="rollpix.configurable.gallery.data"
+                   template="Rollpix_ConfigurableGallery::product/gallery_data.phtml"
+                   after="-">
+                <arguments>
+                    <argument name="gallery_data_view_model" xsi:type="object">
+                        Rollpix\ConfigurableGallery\ViewModel\GalleryData
+                    </argument>
+                </arguments>
+            </block>
+        </referenceContainer>
+    </body>
+</page>

@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<!--
+    Adds associated_attributes column to catalog_product_entity_media_gallery_value.
+    This column already exists in production (created by legacy Mango module).
+    Format: attribute{ATTRIBUTE_ID}-{OPTION_ID} (e.g., attribute92-318)
+    Multiple values comma-separated: attribute92-318,attribute92-320
+    NULL = generic image (shown for all colors).
+-->
+<schema xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Setup/Declaration/Schema/etc/schema.xsd">
+    <table name="catalog_product_entity_media_gallery_value" resource="default">
+        <column xsi:type="text" name="associated_attributes" nullable="true"
+                comment="Color mapping: attribute{ID}-{OPTION_ID} format"/>
+    </table>
+</schema>

@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<!--
+    Hyva compatibility sub-module for Rollpix_ConfigurableGallery (PRD §7.7).
+    Separate module with dependency on both the main module and Hyva_Theme.
+    Uses Alpine.js instead of jQuery/RequireJS.
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+    <module name="Rollpix_ConfigurableGalleryHyvaCompat">
+        <sequence>
+            <module name="Rollpix_ConfigurableGallery"/>
+            <module name="Hyva_Theme"/>
+        </sequence>
+    </module>
+</config>

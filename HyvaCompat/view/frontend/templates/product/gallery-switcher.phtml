@@ -1,0 +1,230 @@
+<?php
+/**
+ * Hyva Alpine.js component for Rollpix ConfigurableGallery (PRD §7.7).
+ *
+ * Listens to Hyva's swatch selection events and filters the gallery
+ * by color using the rollpixGalleryConfig data from the ViewModel.
+ *
+ * No jQuery, no RequireJS, no KnockoutJS — pure Alpine.js.
+ *
+ * @var \Rollpix\ConfigurableGallery\ViewModel\GalleryData $galleryDataViewModel
+ * @var \Magento\Framework\Escaper $escaper
+ */
+
+$galleryDataViewModel = $block->getData('gallery_data_view_model');
+if (!$galleryDataViewModel || !$galleryDataViewModel->isEnabled()) {
+    return;
+}
+
+$galleryConfigJson = $galleryDataViewModel->getGalleryConfigJson();
+?>
+
+<div x-data="rollpixGallerySwitcher(<?= $escaper->escapeHtmlAttr($galleryConfigJson) ?>)"
+     x-init="init()"
+     @private-content-loaded.window="onPrivateContentLoaded($event)"
+     class="hidden">
+</div>
+
+<script>
+    'use strict';
+
+    function rollpixGallerySwitcher(config) {
+        return {
+            config: config || {},
+            currentColorOptionId: null,
+            initialized: false,
+
+            init() {
+                if (this.initialized || !this.config.enabled) {
+                    return;
+                }
+                this.initialized = true;
+
+                // Listen to Hyva swatch change events
+                this.bindSwatchEvents();
+
+                // Apply initial color preselection
+                const defaultColor = this.resolveDefaultColor();
+                if (defaultColor !== null) {
+                    this.switchColor(defaultColor, true);
+                }
+            },
+
+            bindSwatchEvents() {
+                const self = this;
+                const colorAttrId = this.config.colorAttributeId;
+
+                // Hyva dispatches custom events for swatch changes
+                window.addEventListener('configurable-selection-changed', function(event) {
+                    const detail = event.detail || {};
+                    if (detail.attributeId && parseInt(detail.attributeId) === colorAttrId) {
+                        self.switchColor(parseInt(detail.optionId), false);
+                    }
+                });
+
+                // Alternative: listen to Alpine $dispatch from swatch component
+                document.addEventListener('option-selected', function(event) {
+                    const detail = event.detail || {};
+                    if (detail.attributeId && parseInt(detail.attributeId) === colorAttrId) {
+                        self.switchColor(parseInt(detail.optionId), false);
+                    }
+                });
+            },
+
+            switchColor(optionId, isInitial) {
+                if (optionId === null || optionId === undefined || isNaN(optionId)) {
+                    return;
+                }
+
+                this.currentColorOptionId = optionId;
+                const filtered = this.getFilteredImages(optionId);
+
+                // Update URL hash if configured
+                if (this.config.updateUrlOnSelect && !isInitial) {
+                    this.updateUrlHash(optionId);
+                }
+
+                // Dispatch event for Hyva gallery to pick up
+                window.dispatchEvent(new CustomEvent('rollpix-gallery-update', {
+                    detail: {
+                        images: filtered.images,
+                        colorOptionId: optionId,
+                        colorLabel: filtered.colorLabel,
+                        isInitial: isInitial
+                    }
+                }));
+
+                // Also dispatch the generic event
+                document.dispatchEvent(new CustomEvent('rollpix:gallery:filter', {
+                    bubbles: true,
+                    detail: {
+                        images: filtered.images,
+                        allMedia: filtered.images,
+                        colorOptionId: optionId,
+                        colorLabel: filtered.colorLabel,
+                        isInitial: isInitial
+                    }
+                }));
+            },
+
+            getFilteredImages(optionId) {
+                const colorMapping = this.config.colorMapping || {};
+                const optionKey = String(optionId);
+                const colorInfo = colorMapping[optionKey];
+                const genericInfo = colorMapping['null'];
+                const showGeneric = this.config.showGenericImages !== false;
+
+                const colorValueIds = colorInfo
+                    ? [].concat(colorInfo.images || [], colorInfo.videos || [])
+                    : [];
+                const genericValueIds = (genericInfo && showGeneric)
+                    ? [].concat(genericInfo.images || [], genericInfo.videos || [])
+                    : [];
+
+                return {
+                    images: colorValueIds.concat(genericValueIds),
+                    colorLabel: colorInfo ? colorInfo.label : null,
+                    colorOptionId: optionId
+                };
+            },
+
+            resolveDefaultColor() {
+                // Priority 1: URL parameter
+                if (this.config.deepLinkEnabled) {
+                    const urlColor = this.getColorFromUrl();
+                    if (urlColor !== null) {
+                        return urlColor;
+                    }
+                }
+
+                if (!this.config.preselectColor) {
+                    return null;
+                }
+
+                // Priority 2: Manual default
+                if (this.config.defaultColorOptionId) {
+                    return parseInt(this.config.defaultColorOptionId);
+                }
+
+                // Priority 3: First color with stock
+                const availableColors = this.config.availableColors || [];
+                const colorsWithStock = this.config.colorsWithStock || [];
+
+                if (this.config.stockFilterEnabled && colorsWithStock.length > 0) {
+                    for (let i = 0; i < availableColors.length; i++) {
+                        if (colorsWithStock.includes(availableColors[i])) {
+                            return availableColors[i];
+                        }
+                    }
+                }
+
+                // Priority 4: First available color
+                return availableColors.length > 0 ? availableColors[0] : null;
+            },
+
+            getColorFromUrl() {
+                let colorParam = null;
+
+                // Try hash: #color=value
+                const hash = window.location.hash;
+                if (hash) {
+                    const hashMatch = hash.match(/[#&]color=([^&]*)/);
+                    if (hashMatch) {
+                        colorParam = decodeURIComponent(hashMatch[1]);
+                    }
+                }
+
+                // Try query: ?color=value
+                if (!colorParam) {
+                    const search = window.location.search;
+                    if (search) {
+                        const searchMatch = search.match(/[?&]color=([^&]*)/);
+                        if (searchMatch) {
+                            colorParam = decodeURIComponent(searchMatch[1]);
+                        }
+                    }
+                }
+
+                if (!colorParam) {
+                    return null;
+                }
+
+                // Try numeric
+                const numericId = parseInt(colorParam);
+                const availableColors = this.config.availableColors || [];
+                if (!isNaN(numericId) && availableColors.includes(numericId)) {
+                    return numericId;
+                }
+
+                // Try label match
+                const colorMapping = this.config.colorMapping || {};
+                const lowerParam = colorParam.toLowerCase();
+                for (const key in colorMapping) {
+                    if (key !== 'null' && colorMapping[key].label &&
+                        colorMapping[key].label.toLowerCase() === lowerParam) {
+                        return parseInt(key);
+                    }
+                }
+
+                return null;
+            },
+
+            updateUrlHash(optionId) {
+                if (!optionId) return;
+                try {
+                    const url = window.location.pathname + window.location.search + '#color=' + optionId;
+                    window.history.replaceState(null, '', url);
+                } catch (e) {
+                    // Silently fail
+                }
+            },
+
+            onPrivateContentLoaded(event) {
+                // Re-initialize after private content is loaded (Hyva pattern)
+                if (!this.initialized) {
+                    this.init();
+                }
+            }
+        };
+    }
+</script>

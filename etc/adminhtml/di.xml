@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<!--
+    Admin-area dependency injection for Rollpix_ConfigurableGallery.
+    Registers plugins that only run in admin context.
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+
+    <!--
+        Plugin: Persist color mapping (associated_attributes) when saving product in admin.
+        sortOrder=10: base plugin for product save.
+        Targets Product model save, not controller, for broader compatibility.
+    -->
+    <type name="Magento\Catalog\Model\Product">
+        <plugin name="rollpix_cg_admin_gallery_save"
+                type="Rollpix\ConfigurableGallery\Plugin\AdminGallerySavePlugin"
+                sortOrder="10"/>
+    </type>
+</config>

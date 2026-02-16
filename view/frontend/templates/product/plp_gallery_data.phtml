@@ -1,0 +1,48 @@
+<?php
+/**
+ * Template that injects rollpixPlpConfig JSON into category/listing pages (PRD §8.8).
+ * Provides color→image mapping data for PLP swatch changes, HoverSlider,
+ * and ImageFlipHover compatibility scripts.
+ *
+ * @var \Rollpix\ConfigurableGallery\ViewModel\PlpGalleryData $plpViewModel
+ * @var \Magento\Framework\View\Element\Template $block
+ */
+
+$plpViewModel = $block->getData('plp_gallery_data_view_model');
+if (!$plpViewModel || !$plpViewModel->isEnabled()) {
+    return;
+}
+
+// Get products from the product list block
+$productListBlock = $block->getLayout()->getBlock('category.products.list')
+    ?? $block->getLayout()->getBlock('search_result_list');
+
+if (!$productListBlock) {
+    return;
+}
+
+$productCollection = $productListBlock->getLoadedProductCollection();
+if (!$productCollection) {
+    return;
+}
+
+$products = [];
+foreach ($productCollection as $product) {
+    $products[] = $product;
+}
+
+$plpConfigJson = $plpViewModel->getPlpConfigJson($products);
+if ($plpConfigJson === '{}') {
+    return;
+}
+?>
+
+<script type="text/x-magento-init">
+{
+    "*": {
+        "Rollpix_ConfigurableGallery/js/plp/swatch-image": <?= /* @noEscape */ $plpConfigJson ?>,
+        "Rollpix_ConfigurableGallery/js/plp/hoverslider-compat": <?= /* @noEscape */ $plpConfigJson ?>,
+        "Rollpix_ConfigurableGallery/js/plp/imageflip-compat": <?= /* @noEscape */ $plpConfigJson ?>
+    }
+}
+</script>
