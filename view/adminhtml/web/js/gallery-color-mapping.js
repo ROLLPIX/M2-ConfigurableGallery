@@ -146,7 +146,7 @@ define([
 
             colorOptions.forEach(function (option) {
                 var attrValue = toAttributeValue(option.value);
-                var label = option.value === '' ? '\u2014' : option.label;
+                var label = option.value === '' ? $t('Sin color') : option.label;
                 var $opt = $('<option></option>').val(attrValue).text(label);
 
                 if (attrValue === currentValue) {
@@ -179,8 +179,8 @@ define([
             var $select = buildThumbnailSelect(vid, currentValue);
             $imageEl.append($select);
 
-            // Stop click propagation so clicking the dropdown doesn't open Image Detail
-            $select.on('click', function (e) {
+            // Stop event propagation so the dropdown works inside Magento's sortable gallery
+            $select.on('mousedown touchstart click', function (e) {
                 e.stopPropagation();
             });
 

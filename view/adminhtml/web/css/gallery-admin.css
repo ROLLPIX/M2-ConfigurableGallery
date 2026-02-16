@@ -35,25 +35,17 @@
     z-index: 3;
     display: block;
     width: 100%;
-    height: 22px;
-    font-size: 10px;
-    padding: 1px 4px;
+    height: 24px;
+    font-size: 11px;
+    padding: 2px 4px;
     margin: 0;
     border: none;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.15);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.2);
     border-radius: 0;
-    background: rgba(255, 255, 255, 0.92);
+    background: rgba(255, 255, 255, 0.95);
     color: #333;
     cursor: pointer;
     box-sizing: border-box;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    appearance: none;
-    /* Small arrow indicator */
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='4'%3E%3Cpath d='M0 0l4 4 4-4z' fill='%23666'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 4px center;
-    padding-right: 14px;
     text-overflow: ellipsis;
 }
 
@@ -65,5 +57,4 @@
 .rollpix-thumb-select:focus {
     background-color: #fff;
     border-bottom-color: #007bdb;
-    outline: none;
 }
