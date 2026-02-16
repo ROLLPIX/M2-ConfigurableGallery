@@ -4,23 +4,18 @@ declare(strict_types=1);
 
 namespace Rollpix\ConfigurableGallery\Model\Config\Source;
 
-use Magento\Catalog\Model\Product;
-use Magento\Eav\Api\AttributeRepositoryInterface;
-use Magento\Framework\Api\SearchCriteriaBuilder;
+use Magento\Catalog\Model\ResourceModel\Product\Attribute\CollectionFactory as AttributeCollectionFactory;
 use Magento\Framework\Data\OptionSourceInterface;
 
 /**
  * Source model for the color_attribute_code config field.
- * Lists all product select/multiselect attributes suitable for color mapping:
- * - Swatch attributes (visual or text)
- * - Regular select attributes used as configurable super attributes
- * - Any select/multiselect product attribute (admin may use a custom one)
+ * Lists all product select/multiselect attributes using the catalog attribute
+ * collection (more reliable than the EAV repository API for filtered queries).
  */
 class SwatchAttributes implements OptionSourceInterface
 {
     public function __construct(
-        private readonly AttributeRepositoryInterface $attributeRepository,
-        private readonly SearchCriteriaBuilder $searchCriteriaBuilder
+        private readonly AttributeCollectionFactory $attributeCollectionFactory
     ) {
     }
 
@@ -29,44 +24,28 @@ class SwatchAttributes implements OptionSourceInterface
         $options = [];
 
         try {
-            $searchCriteria = $this->searchCriteriaBuilder
-                ->addFilter('entity_type_id', 4) // catalog_product
-                ->addFilter('frontend_input', ['select', 'multiselect'], 'in')
-                ->create();
+            $collection = $this->attributeCollectionFactory->create();
+            $collection->addFieldToFilter('frontend_input', ['in' => ['select', 'multiselect']]);
+            $collection->addFieldToFilter('frontend_label', ['neq' => '']);
+            $collection->setOrder('frontend_label', 'ASC');
 
-            $attributes = $this->attributeRepository->getList(
-                Product::ENTITY,
-                $searchCriteria
-            );
-
-            foreach ($attributes->getItems() as $attribute) {
+            foreach ($collection as $attribute) {
                 $code = $attribute->getAttributeCode();
-                $label = $attribute->getDefaultFrontendLabel() ?? $code;
-                $swatchType = $attribute->getData('swatch_input_type');
-
-                // Build a descriptive suffix
-                $suffix = $code;
-                if ($swatchType === 'visual') {
-                    $suffix .= ', swatch visual';
-                } elseif ($swatchType === 'text') {
-                    $suffix .= ', swatch text';
-                }
+                $label = $attribute->getFrontendLabel() ?: $code;
 
                 $options[] = [
                     'value' => $code,
-                    'label' => sprintf('%s (%s)', $label, $suffix),
+                    'label' => sprintf('%s (%s)', $label, $code),
                 ];
             }
         } catch (\Exception $e) {
-            // Fallback: at minimum offer 'color'
+            // Fallback
             $options[] = ['value' => 'color', 'label' => 'Color (color)'];
         }
 
         if (empty($options)) {
             $options[] = ['value' => 'color', 'label' => 'Color (color)'];
         }
-
-        usort($options, fn(array $a, array $b) => strcmp((string) $a['label'], (string) $b['label']));
 
         return $options;
     }
