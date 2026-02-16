@@ -49,10 +49,6 @@ class HoverSliderCompatPlugin
             return $result;
         }
 
-        if ((int) $product->getData('rollpix_gallery_enabled') !== 1) {
-            return $result;
-        }
-
         $mediaMapping = $this->colorMapping->getColorMediaMapping($product);
         if (empty($mediaMapping)) {
             return $result;

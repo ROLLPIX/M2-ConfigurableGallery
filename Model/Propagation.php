@@ -63,11 +63,6 @@ class Propagation
             return $report;
         }
 
-        if ((int) $product->getData('rollpix_gallery_enabled') !== 1) {
-            $report['errors'][] = 'rollpix_gallery_enabled is not active';
-            return $report;
-        }
-
         $storeId = $product->getStoreId();
         $cleanFirst ??= $this->config->isCleanBeforePropagate($storeId);
         $propagationRoles = $this->config->getPropagationRoles($storeId);

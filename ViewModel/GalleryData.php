@@ -59,10 +59,6 @@ class GalleryData implements ArgumentInterface
             return false;
         }
 
-        if ((int) $product->getData('rollpix_gallery_enabled') !== 1) {
-            return false;
-        }
-
         // Check that a selector attribute resolves for this product
         return $this->attributeResolver->resolveForProduct($product, $product->getStoreId()) !== null;
     }
@@ -132,7 +128,7 @@ class GalleryData implements ArgumentInterface
             'stockFilterEnabled' => $this->config->isStockFilterEnabled($storeId),
             'outOfStockBehavior' => $this->config->getOutOfStockBehavior($storeId),
             'defaultColorOptionId' => $defaultColorOptionId,
-            'preselectColor' => $this->config->isPreselectColorEnabled($storeId),
+            'preselectColor' => $this->config->isPreselectVariantPdpEnabled($storeId),
             'deepLinkEnabled' => $this->config->isDeepLinkEnabled($storeId),
             'updateUrlOnSelect' => $this->config->isUpdateUrlOnSelectEnabled($storeId),
             'availableColors' => $availableColorIds,

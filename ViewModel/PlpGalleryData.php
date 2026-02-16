@@ -61,10 +61,6 @@ class PlpGalleryData implements ArgumentInterface
                 continue;
             }
 
-            if ((int) $product->getData('rollpix_gallery_enabled') !== 1) {
-                continue;
-            }
-
             $productConfig = $this->buildProductPlpConfig($product);
             if ($productConfig !== null) {
                 $plpConfig[(int) $product->getId()] = $productConfig;

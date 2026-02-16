@@ -83,6 +83,6 @@ class SwatchImagePlugin
             return false;
         }
 
-        return (int) $product->getData('rollpix_gallery_enabled') === 1;
+        return true;
     }
 }

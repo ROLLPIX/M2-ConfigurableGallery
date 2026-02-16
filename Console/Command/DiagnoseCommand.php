@@ -54,7 +54,7 @@ class DiagnoseCommand extends Command
                 self::OPTION_ALL,
                 null,
                 InputOption::VALUE_NONE,
-                'Diagnosticar todos los configurables con rollpix_gallery_enabled=1'
+                'Diagnosticar todos los productos configurables'
             );
     }
 
@@ -97,7 +97,8 @@ class DiagnoseCommand extends Command
         $output->writeln(sprintf('  Filtro de stock: %s', $this->config->isStockFilterEnabled() ? 'Sí' : 'No'));
         $output->writeln(sprintf('  Propagación: %s', $this->config->getPropagationMode()));
         $output->writeln(sprintf('  Adaptador galería: %s', $this->config->getGalleryAdapter()));
-        $output->writeln(sprintf('  Preselección color: %s', $this->config->isPreselectColorEnabled() ? 'Sí' : 'No'));
+        $output->writeln(sprintf('  Preselección PDP: %s', $this->config->isPreselectVariantPdpEnabled() ? 'Sí' : 'No'));
+        $output->writeln(sprintf('  Preselección PLP: %s', $this->config->isPreselectVariantPlpEnabled() ? 'Sí' : 'No'));
         $output->writeln(sprintf('  Deep link: %s', $this->config->isDeepLinkEnabled() ? 'Sí' : 'No'));
         $output->writeln(sprintf('  Debug mode: %s', $this->config->isDebugMode() ? 'Sí' : 'No'));
     }
@@ -109,19 +110,11 @@ class DiagnoseCommand extends Command
 
         $totalConfigurables = $collection->getSize();
 
-        $enabledCollection = $this->productCollectionFactory->create();
-        $enabledCollection->addAttributeToFilter('type_id', Configurable::TYPE_CODE);
-        $enabledCollection->addAttributeToFilter('rollpix_gallery_enabled', 1);
-
-        $enabledCount = $enabledCollection->getSize();
-
         $output->writeln('');
         $output->writeln('<comment>Resumen del Catálogo:</comment>');
         $output->writeln(sprintf('  Total configurables: %d', $totalConfigurables));
-        $output->writeln(sprintf('  Con Rollpix Gallery habilitada: %d', $enabledCount));
-        $output->writeln(sprintf('  Sin habilitar: %d', $totalConfigurables - $enabledCount));
 
-        if ($enabledCount > 0) {
+        if ($totalConfigurables > 0) {
             $output->writeln('');
             $output->writeln('<info>Use --all para diagnosticar todos, o --product-id=ID para uno específico.</info>');
         }
@@ -131,8 +124,7 @@ class DiagnoseCommand extends Command
     {
         $collection = $this->productCollectionFactory->create();
         $collection->addAttributeToFilter('type_id', Configurable::TYPE_CODE);
-        $collection->addAttributeToFilter('rollpix_gallery_enabled', 1);
-        $collection->addAttributeToSelect(['name', 'sku', 'rollpix_gallery_enabled', 'rollpix_default_color']);
+        $collection->addAttributeToSelect(['name', 'sku']);
 
         $count = $collection->getSize();
         $output->writeln('');
@@ -176,14 +168,8 @@ class DiagnoseCommand extends Command
             $product->getSku()
         ));
 
-        $enabled = (int) $product->getData('rollpix_gallery_enabled') === 1;
-        $output->writeln(sprintf('  Rollpix Gallery: %s', $enabled ? '<info>Habilitada</info>' : '<error>Deshabilitada</error>'));
-
         $resolvedAttr = $this->attributeResolver->resolveForProduct($product);
         $output->writeln(sprintf('  Atributo selector resuelto: %s', $resolvedAttr ?? '<error>Ninguno</error>'));
-
-        $defaultColor = $product->getData('rollpix_default_color');
-        $output->writeln(sprintf('  Color default: %s', $defaultColor ?: 'Auto-detect'));
 
         // Color mapping
         $colorLabels = $this->colorMapping->getColorOptionLabels($product);
@@ -232,10 +218,8 @@ class DiagnoseCommand extends Command
         }
 
         $output->writeln('');
-        if ($totalMapped > 0 && $enabled) {
+        if ($totalMapped > 0) {
             $output->writeln('  <info>Estado: LISTO PARA USAR</info>');
-        } elseif ($totalMapped > 0 && !$enabled) {
-            $output->writeln('  <comment>Estado: MAPPING EXISTE, FALTA HABILITAR rollpix_gallery_enabled</comment>');
         } else {
             $output->writeln('  <error>Estado: SIN MAPPING — Asignar colores a imágenes en admin</error>');
         }

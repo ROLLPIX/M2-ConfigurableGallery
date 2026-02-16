@@ -50,7 +50,7 @@ class PropagateCommand extends Command
                 self::OPTION_ALL,
                 null,
                 InputOption::VALUE_NONE,
-                'Propagar todos los configurables con rollpix_gallery_enabled=1'
+                'Propagar todos los productos configurables'
             )
             ->addOption(
                 self::OPTION_DRY_RUN,
@@ -94,7 +94,6 @@ class PropagateCommand extends Command
 
         $collection = $this->productCollectionFactory->create();
         $collection->addAttributeToFilter('type_id', Configurable::TYPE_CODE);
-        $collection->addAttributeToFilter('rollpix_gallery_enabled', 1);
         $collection->addAttributeToSelect('*');
 
         if ($productId !== null) {

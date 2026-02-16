@@ -19,7 +19,8 @@ class Config
     private const XML_PATH_ENABLED = self::XML_PATH_PREFIX . 'general/enabled';
     private const XML_PATH_SELECTOR_ATTRIBUTES = self::XML_PATH_PREFIX . 'general/selector_attributes';
     private const XML_PATH_SHOW_GENERIC_IMAGES = self::XML_PATH_PREFIX . 'general/show_generic_images';
-    private const XML_PATH_PRESELECT_COLOR = self::XML_PATH_PREFIX . 'general/preselect_color';
+    private const XML_PATH_PRESELECT_VARIANT_PDP = self::XML_PATH_PREFIX . 'general/preselect_variant_pdp';
+    private const XML_PATH_PRESELECT_VARIANT_PLP = self::XML_PATH_PREFIX . 'general/preselect_variant_plp';
     private const XML_PATH_DEEP_LINK_ENABLED = self::XML_PATH_PREFIX . 'general/deep_link_enabled';
     private const XML_PATH_UPDATE_URL_ON_SELECT = self::XML_PATH_PREFIX . 'general/update_url_on_select';
 
@@ -82,10 +83,19 @@ class Config
         );
     }
 
-    public function isPreselectColorEnabled(int|string|null $storeId = null): bool
+    public function isPreselectVariantPdpEnabled(int|string|null $storeId = null): bool
     {
         return $this->scopeConfig->isSetFlag(
-            self::XML_PATH_PRESELECT_COLOR,
+            self::XML_PATH_PRESELECT_VARIANT_PDP,
+            ScopeInterface::SCOPE_STORE,
+            $storeId
+        );
+    }
+
+    public function isPreselectVariantPlpEnabled(int|string|null $storeId = null): bool
+    {
+        return $this->scopeConfig->isSetFlag(
+            self::XML_PATH_PRESELECT_VARIANT_PLP,
             ScopeInterface::SCOPE_STORE,
             $storeId
         );

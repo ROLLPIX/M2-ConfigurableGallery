@@ -105,10 +105,6 @@ class CartItemImagePlugin
             return null;
         }
 
-        if ((int) $configurableProduct->getData('rollpix_gallery_enabled') !== 1) {
-            return null;
-        }
-
         // Resolve the selector attribute for this configurable product
         $colorAttributeCode = $this->attributeResolver->resolveForProduct($configurableProduct);
         if ($colorAttributeCode === null) {

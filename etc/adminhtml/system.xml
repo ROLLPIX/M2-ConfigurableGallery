@@ -42,11 +42,18 @@
                     <comment>Mostrar imágenes sin color asignado junto con las del color seleccionado.</comment>
                 </field>
 
-                <field id="preselect_color" translate="label comment" type="select" sortOrder="40"
+                <field id="preselect_variant_pdp" translate="label comment" type="select" sortOrder="40"
                        showInDefault="1" showInWebsite="1" showInStore="1">
-                    <label>Preseleccionar Color</label>
+                    <label>Preseleccionar Variante en Ficha de Producto</label>
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
-                    <comment>Preseleccionar un color automáticamente al cargar la ficha de producto.</comment>
+                    <comment>Preseleccionar automáticamente la primera variante disponible al cargar la ficha de producto (PDP).</comment>
+                </field>
+
+                <field id="preselect_variant_plp" translate="label comment" type="select" sortOrder="45"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Preseleccionar Variante en Lista de Productos</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Preseleccionar automáticamente la primera variante disponible en listados de categoría (PLP).</comment>
                 </field>
 
                 <field id="deep_link_enabled" translate="label comment" type="select" sortOrder="50"

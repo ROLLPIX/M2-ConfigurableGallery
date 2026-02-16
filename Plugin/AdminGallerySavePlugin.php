@@ -39,10 +39,6 @@ class AdminGallerySavePlugin
             return $result;
         }
 
-        if ((int) $result->getData('rollpix_gallery_enabled') !== 1) {
-            return $result;
-        }
-
         $mediaGallery = $result->getData('media_gallery');
         if (!is_array($mediaGallery) || !isset($mediaGallery['images'])) {
             return $result;

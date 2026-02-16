@@ -8,7 +8,8 @@
                 <enabled>1</enabled>
                 <selector_attributes>color</selector_attributes>
                 <show_generic_images>1</show_generic_images>
-                <preselect_color>1</preselect_color>
+                <preselect_variant_pdp>1</preselect_variant_pdp>
+                <preselect_variant_plp>1</preselect_variant_plp>
                 <deep_link_enabled>1</deep_link_enabled>
                 <update_url_on_select>1</update_url_on_select>
             </general>

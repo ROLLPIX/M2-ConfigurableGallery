@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Rollpix\ConfigurableGallery\Console\Command;
 
-use Magento\Catalog\Api\ProductRepositoryInterface;
 use Magento\Catalog\Model\Product;
 use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory as ProductCollectionFactory;
 use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
@@ -40,7 +39,6 @@ class MigrateCommand extends Command
         private readonly AttributeResolver $attributeResolver,
         private readonly ColorMapping $colorMapping,
         private readonly ProductCollectionFactory $productCollectionFactory,
-        private readonly ProductRepositoryInterface $productRepository,
         private readonly ResourceConnection $resourceConnection,
         private readonly State $appState
     ) {
@@ -152,9 +150,6 @@ class MigrateCommand extends Command
             $product->getId()
         ));
 
-        $enabled = (int) $product->getData('rollpix_gallery_enabled') === 1;
-        $output->writeln(sprintf('  rollpix_gallery_enabled: %s', $enabled ? 'Sí' : 'No'));
-
         // Images on configurable
         $configMapping = $this->colorMapping->getColorMediaMapping($product);
         $mappedCount = 0;
@@ -217,10 +212,8 @@ class MigrateCommand extends Command
 
         // Status recommendation
         $output->writeln('');
-        if ($hasMangoData && $enabled) {
+        if ($hasMangoData) {
             $output->writeln('  <info>Estado: ACTIVO Y CONFIGURADO</info>');
-        } elseif ($hasMangoData && !$enabled) {
-            $output->writeln('  <comment>Recomendación: Activar rollpix_gallery_enabled</comment>');
         } elseif ($childImageCount > 0 && !$hasMangoData) {
             $output->writeln('  <comment>Recomendación: Ejecutar --mode=consolidate para mover imágenes al padre</comment>');
         } elseif ($unmappedCount > 0 && $mappedCount === 0) {
@@ -363,17 +356,6 @@ class MigrateCommand extends Command
             }
         }
 
-        // Enable the flag
-        if (!$dryRun && $totalImages > 0) {
-            try {
-                $product->setData('rollpix_gallery_enabled', 1);
-                $this->productRepository->save($product);
-                $output->writeln('  <info>rollpix_gallery_enabled activado</info>');
-            } catch (\Exception $e) {
-                $output->writeln(sprintf('  <error>Error activando flag: %s</error>', $e->getMessage()));
-            }
-        }
-
         $output->writeln('');
     }
 
@@ -485,17 +467,6 @@ class MigrateCommand extends Command
         $output->writeln('');
         $output->writeln(sprintf('  Mapeadas automáticamente: %d', $mapped));
         $output->writeln(sprintf('  Sin match (manual): %d', $unmapped));
-
-        // Enable the flag if we mapped images
-        if (!$dryRun && $mapped > 0) {
-            try {
-                $product->setData('rollpix_gallery_enabled', 1);
-                $this->productRepository->save($product);
-                $output->writeln('  <info>rollpix_gallery_enabled activado</info>');
-            } catch (\Exception $e) {
-                $output->writeln(sprintf('  <error>Error activando flag: %s</error>', $e->getMessage()));
-            }
-        }
 
         $output->writeln('');
     }
