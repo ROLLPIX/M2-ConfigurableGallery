@@ -28,11 +28,11 @@
                     <comment>Habilita o deshabilita el módulo globalmente.</comment>
                 </field>
 
-                <field id="color_attribute_code" translate="label comment" type="select" sortOrder="20"
+                <field id="selector_attributes" translate="label comment" type="multiselect" sortOrder="20"
                        showInDefault="1" showInWebsite="1" showInStore="1">
-                    <label>Atributo de Color</label>
+                    <label>Atributos Selectores</label>
                     <source_model>Rollpix\ConfigurableGallery\Model\Config\Source\SwatchAttributes</source_model>
-                    <comment>Atributo visual principal para el mapping de imágenes. Generalmente "color".</comment>
+                    <comment>Lista ordenada por prioridad de atributos para mapping de imágenes. El módulo usa el primer atributo que coincida con los super atributos (variantes) del producto configurable.</comment>
                 </field>
 
                 <field id="show_generic_images" translate="label comment" type="select" sortOrder="30"

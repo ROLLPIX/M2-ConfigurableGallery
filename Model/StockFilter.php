@@ -27,6 +27,7 @@ class StockFilter
      */
     public function __construct(
         private readonly Config $config,
+        private readonly AttributeResolver $attributeResolver,
         private readonly ModuleManager $moduleManager,
         private readonly StoreManagerInterface $storeManager,
         private readonly StockRegistryInterface $stockRegistry,
@@ -48,7 +49,10 @@ class StockFilter
             return [];
         }
 
-        $colorAttributeCode = $this->config->getColorAttributeCode($storeId);
+        $colorAttributeCode = $this->attributeResolver->resolveForProduct($product, $storeId);
+        if ($colorAttributeCode === null) {
+            return [];
+        }
 
         /** @var Configurable $typeInstance */
         $typeInstance = $product->getTypeInstance();

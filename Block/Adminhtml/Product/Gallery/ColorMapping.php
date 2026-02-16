@@ -10,6 +10,7 @@ use Magento\Catalog\Model\Product;
 use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
 use Magento\Framework\Registry;
 use Magento\Framework\Serialize\Serializer\Json as JsonSerializer;
+use Rollpix\ConfigurableGallery\Model\AttributeResolver;
 use Rollpix\ConfigurableGallery\Model\ColorMapping as ColorMappingModel;
 use Rollpix\ConfigurableGallery\Model\Config;
 
@@ -26,6 +27,7 @@ class ColorMapping extends Template
         Context $context,
         private readonly Registry $registry,
         private readonly Config $config,
+        private readonly AttributeResolver $attributeResolver,
         private readonly ColorMappingModel $colorMapping,
         private readonly JsonSerializer $jsonSerializer,
         array $data = []
@@ -55,7 +57,12 @@ class ColorMapping extends Template
             return false;
         }
 
-        return $product->getTypeId() === Configurable::TYPE_CODE;
+        if ($product->getTypeId() !== Configurable::TYPE_CODE) {
+            return false;
+        }
+
+        // Only render if a selector attribute resolves for this product
+        return $this->attributeResolver->resolveForProduct($product) !== null;
     }
 
     /**
@@ -86,11 +93,16 @@ class ColorMapping extends Template
     }
 
     /**
-     * Get the color attribute ID.
+     * Get the resolved selector attribute ID for the current product.
      */
     public function getColorAttributeId(): ?int
     {
-        return $this->colorMapping->getColorAttributeId();
+        $product = $this->getProduct();
+        if ($product === null) {
+            return null;
+        }
+
+        return $this->attributeResolver->resolveAttributeId($product);
     }
 
     /**

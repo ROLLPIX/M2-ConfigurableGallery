@@ -17,7 +17,7 @@ class Config
 
     // §9.1 General
     private const XML_PATH_ENABLED = self::XML_PATH_PREFIX . 'general/enabled';
-    private const XML_PATH_COLOR_ATTRIBUTE_CODE = self::XML_PATH_PREFIX . 'general/color_attribute_code';
+    private const XML_PATH_SELECTOR_ATTRIBUTES = self::XML_PATH_PREFIX . 'general/selector_attributes';
     private const XML_PATH_SHOW_GENERIC_IMAGES = self::XML_PATH_PREFIX . 'general/show_generic_images';
     private const XML_PATH_PRESELECT_COLOR = self::XML_PATH_PREFIX . 'general/preselect_color';
     private const XML_PATH_DEEP_LINK_ENABLED = self::XML_PATH_PREFIX . 'general/deep_link_enabled';
@@ -53,13 +53,24 @@ class Config
         );
     }
 
-    public function getColorAttributeCode(int|string|null $storeId = null): string
+    /**
+     * Get the ordered list of selector attribute codes from config.
+     *
+     * @return string[] e.g. ['color', 'rollpix_erp_color', 'medida']
+     */
+    public function getSelectorAttributes(int|string|null $storeId = null): array
     {
-        return (string) ($this->scopeConfig->getValue(
-            self::XML_PATH_COLOR_ATTRIBUTE_CODE,
+        $value = $this->scopeConfig->getValue(
+            self::XML_PATH_SELECTOR_ATTRIBUTES,
             ScopeInterface::SCOPE_STORE,
             $storeId
-        ) ?? 'color');
+        );
+
+        if ($value === null || $value === '') {
+            return ['color'];
+        }
+
+        return array_filter(array_map('trim', explode(',', (string) $value)));
     }
 
     public function showGenericImages(int|string|null $storeId = null): bool

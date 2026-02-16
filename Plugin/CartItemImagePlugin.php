@@ -10,6 +10,7 @@ use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
 use Magento\Checkout\CustomerData\AbstractItem;
 use Magento\Quote\Model\Quote\Item as QuoteItem;
 use Psr\Log\LoggerInterface;
+use Rollpix\ConfigurableGallery\Model\AttributeResolver;
 use Rollpix\ConfigurableGallery\Model\ColorMapping;
 use Rollpix\ConfigurableGallery\Model\Config;
 
@@ -23,6 +24,7 @@ class CartItemImagePlugin
 {
     public function __construct(
         private readonly Config $config,
+        private readonly AttributeResolver $attributeResolver,
         private readonly ColorMapping $colorMapping,
         private readonly ProductRepositoryInterface $productRepository,
         private readonly LoggerInterface $logger
@@ -107,8 +109,12 @@ class CartItemImagePlugin
             return null;
         }
 
-        // Get color option_id from the simple product
-        $colorAttributeCode = $this->config->getColorAttributeCode();
+        // Resolve the selector attribute for this configurable product
+        $colorAttributeCode = $this->attributeResolver->resolveForProduct($configurableProduct);
+        if ($colorAttributeCode === null) {
+            return null;
+        }
+
         $colorOptionId = $simpleProduct->getData($colorAttributeCode);
 
         if ($colorOptionId === null) {

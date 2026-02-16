@@ -11,6 +11,7 @@ use Magento\Framework\Registry;
 use Magento\Framework\Serialize\Serializer\Json as JsonSerializer;
 use Magento\Framework\View\Element\Block\ArgumentInterface;
 use Psr\Log\LoggerInterface;
+use Rollpix\ConfigurableGallery\Model\AttributeResolver;
 use Rollpix\ConfigurableGallery\Model\ColorMapping;
 use Rollpix\ConfigurableGallery\Model\ColorPreselect;
 use Rollpix\ConfigurableGallery\Model\Config;
@@ -25,6 +26,7 @@ class GalleryData implements ArgumentInterface
     public function __construct(
         private readonly Registry $registry,
         private readonly Config $config,
+        private readonly AttributeResolver $attributeResolver,
         private readonly ColorMapping $colorMapping,
         private readonly ColorPreselect $colorPreselect,
         private readonly StockFilter $stockFilter,
@@ -57,7 +59,12 @@ class GalleryData implements ArgumentInterface
             return false;
         }
 
-        return (int) $product->getData('rollpix_gallery_enabled') === 1;
+        if ((int) $product->getData('rollpix_gallery_enabled') !== 1) {
+            return false;
+        }
+
+        // Check that a selector attribute resolves for this product
+        return $this->attributeResolver->resolveForProduct($product, $product->getStoreId()) !== null;
     }
 
     /**
@@ -72,9 +79,11 @@ class GalleryData implements ArgumentInterface
         }
 
         $storeId = $product->getStoreId();
-        $colorAttributeId = $this->colorMapping->getColorAttributeId($storeId);
 
-        if ($colorAttributeId === null) {
+        $resolvedAttributeCode = $this->attributeResolver->resolveForProduct($product, $storeId);
+        $colorAttributeId = $this->attributeResolver->resolveAttributeId($product, $storeId);
+
+        if ($resolvedAttributeCode === null || $colorAttributeId === null) {
             return '{}';
         }
 
@@ -109,7 +118,7 @@ class GalleryData implements ArgumentInterface
         $galleryConfig = [
             'enabled' => true,
             'colorAttributeId' => $colorAttributeId,
-            'colorAttributeCode' => $this->config->getColorAttributeCode($storeId),
+            'colorAttributeCode' => $resolvedAttributeCode,
             'showGenericImages' => $this->config->showGenericImages($storeId),
             'stockFilterEnabled' => $this->config->isStockFilterEnabled($storeId),
             'outOfStockBehavior' => $this->config->getOutOfStockBehavior($storeId),

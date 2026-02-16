@@ -11,6 +11,7 @@ use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
 use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\App\State;
 use Magento\Framework\Console\Cli;
+use Rollpix\ConfigurableGallery\Model\AttributeResolver;
 use Rollpix\ConfigurableGallery\Model\ColorMapping;
 use Rollpix\ConfigurableGallery\Model\Config;
 use Symfony\Component\Console\Command\Command;
@@ -36,6 +37,7 @@ class MigrateCommand extends Command
 
     public function __construct(
         private readonly Config $config,
+        private readonly AttributeResolver $attributeResolver,
         private readonly ColorMapping $colorMapping,
         private readonly ProductCollectionFactory $productCollectionFactory,
         private readonly ProductRepositoryInterface $productRepository,
@@ -246,11 +248,11 @@ class MigrateCommand extends Command
             $product->getSku()
         ));
 
-        $colorAttributeCode = $this->config->getColorAttributeCode();
-        $colorAttributeId = $this->colorMapping->getColorAttributeId();
+        $colorAttributeCode = $this->attributeResolver->resolveForProduct($product);
+        $colorAttributeId = $this->attributeResolver->resolveAttributeId($product);
 
-        if ($colorAttributeId === null) {
-            $output->writeln('  <error>No se pudo determinar el atributo de color</error>');
+        if ($colorAttributeCode === null || $colorAttributeId === null) {
+            $output->writeln('  <error>No se pudo resolver atributo selector para este producto</error>');
             return;
         }
 
@@ -387,10 +389,10 @@ class MigrateCommand extends Command
         ));
 
         $colorLabels = $this->colorMapping->getColorOptionLabels($product);
-        $colorAttributeId = $this->colorMapping->getColorAttributeId();
+        $colorAttributeId = $this->attributeResolver->resolveAttributeId($product);
 
         if ($colorAttributeId === null || empty($colorLabels)) {
-            $output->writeln('  <error>No se pudo determinar colores del configurable</error>');
+            $output->writeln('  <error>No se pudo resolver atributo selector o colores del configurable</error>');
             return;
         }
 

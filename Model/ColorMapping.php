@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Rollpix\ConfigurableGallery\Model;
 
-use Magento\Catalog\Api\ProductRepositoryInterface;
 use Magento\Catalog\Model\Product;
 use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
 use Magento\Eav\Api\AttributeRepositoryInterface;
@@ -20,6 +19,7 @@ class ColorMapping
 {
     public function __construct(
         private readonly Config $config,
+        private readonly AttributeResolver $attributeResolver,
         private readonly ResourceConnection $resourceConnection,
         private readonly AttributeRepositoryInterface $attributeRepository,
         private readonly LoggerInterface $logger
@@ -73,24 +73,11 @@ class ColorMapping
     }
 
     /**
-     * Get the color attribute ID from configured attribute code.
+     * Get the resolved selector attribute ID for a product.
      */
-    public function getColorAttributeId(int|string|null $storeId = null): ?int
+    public function getColorAttributeId(Product $product, int|string|null $storeId = null): ?int
     {
-        try {
-            $attributeCode = $this->config->getColorAttributeCode($storeId);
-            $attribute = $this->attributeRepository->get(
-                Product::ENTITY,
-                $attributeCode
-            );
-            return (int) $attribute->getAttributeId();
-        } catch (\Exception $e) {
-            $this->logger->error(
-                'Rollpix ConfigurableGallery: Failed to get color attribute ID',
-                ['exception' => $e->getMessage()]
-            );
-            return null;
-        }
+        return $this->attributeResolver->resolveAttributeId($product, $storeId);
     }
 
     /**
@@ -102,7 +89,7 @@ class ColorMapping
      */
     public function getColorMediaMapping(Product $product, int|string|null $storeId = null): array
     {
-        $colorAttributeId = $this->getColorAttributeId($storeId);
+        $colorAttributeId = $this->attributeResolver->resolveAttributeId($product, $storeId);
         if ($colorAttributeId === null) {
             return [];
         }
@@ -211,12 +198,16 @@ class ColorMapping
 
     /**
      * Get color option labels for a configurable product.
+     * Uses the AttributeResolver to determine which attribute to read labels from.
      *
      * @return array<int, string> option_id => label
      */
     public function getColorOptionLabels(Product $product, int|string|null $storeId = null): array
     {
-        $colorAttributeCode = $this->config->getColorAttributeCode($storeId);
+        $colorAttributeCode = $this->attributeResolver->resolveForProduct($product, $storeId);
+        if ($colorAttributeCode === null) {
+            return [];
+        }
 
         if ($product->getTypeId() !== Configurable::TYPE_CODE) {
             return [];

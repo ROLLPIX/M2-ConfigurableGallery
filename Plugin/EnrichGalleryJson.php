@@ -57,7 +57,7 @@ class EnrichGalleryJson
         }
 
         $storeId = $product->getStoreId();
-        $colorAttributeId = $this->colorMapping->getColorAttributeId($storeId);
+        $colorAttributeId = $this->colorMapping->getColorAttributeId($product, $storeId);
 
         if ($colorAttributeId === null) {
             return $result;

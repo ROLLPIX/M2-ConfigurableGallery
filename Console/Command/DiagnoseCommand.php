@@ -10,6 +10,7 @@ use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory as ProductColl
 use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
 use Magento\Framework\App\State;
 use Magento\Framework\Console\Cli;
+use Rollpix\ConfigurableGallery\Model\AttributeResolver;
 use Rollpix\ConfigurableGallery\Model\ColorMapping;
 use Rollpix\ConfigurableGallery\Model\Config;
 use Rollpix\ConfigurableGallery\Model\StockFilter;
@@ -30,6 +31,7 @@ class DiagnoseCommand extends Command
 
     public function __construct(
         private readonly Config $config,
+        private readonly AttributeResolver $attributeResolver,
         private readonly ColorMapping $colorMapping,
         private readonly StockFilter $stockFilter,
         private readonly ProductCollectionFactory $productCollectionFactory,
@@ -91,7 +93,7 @@ class DiagnoseCommand extends Command
         $output->writeln('');
         $output->writeln('<comment>Configuración Global:</comment>');
         $output->writeln(sprintf('  Módulo habilitado: %s', $this->config->isEnabled() ? 'Sí' : 'No'));
-        $output->writeln(sprintf('  Atributo de color: %s', $this->config->getColorAttributeCode()));
+        $output->writeln(sprintf('  Atributos selectores: %s', implode(', ', $this->config->getSelectorAttributes())));
         $output->writeln(sprintf('  Filtro de stock: %s', $this->config->isStockFilterEnabled() ? 'Sí' : 'No'));
         $output->writeln(sprintf('  Propagación: %s', $this->config->getPropagationMode()));
         $output->writeln(sprintf('  Adaptador galería: %s', $this->config->getGalleryAdapter()));
@@ -176,6 +178,9 @@ class DiagnoseCommand extends Command
 
         $enabled = (int) $product->getData('rollpix_gallery_enabled') === 1;
         $output->writeln(sprintf('  Rollpix Gallery: %s', $enabled ? '<info>Habilitada</info>' : '<error>Deshabilitada</error>'));
+
+        $resolvedAttr = $this->attributeResolver->resolveForProduct($product);
+        $output->writeln(sprintf('  Atributo selector resuelto: %s', $resolvedAttr ?? '<error>Ninguno</error>'));
 
         $defaultColor = $product->getData('rollpix_default_color');
         $output->writeln(sprintf('  Color default: %s', $defaultColor ?: 'Auto-detect'));

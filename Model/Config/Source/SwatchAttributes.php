@@ -8,7 +8,7 @@ use Magento\Catalog\Model\ResourceModel\Product\Attribute\CollectionFactory as A
 use Magento\Framework\Data\OptionSourceInterface;
 
 /**
- * Source model for the color_attribute_code config field.
+ * Source model for the selector_attributes config field.
  * Lists all product select/multiselect attributes using the catalog attribute
  * collection (more reliable than the EAV repository API for filtered queries).
  */

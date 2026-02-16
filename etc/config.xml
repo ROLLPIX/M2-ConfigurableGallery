@@ -6,7 +6,7 @@
         <rollpix_configurable_gallery>
             <general>
                 <enabled>1</enabled>
-                <color_attribute_code>color</color_attribute_code>
+                <selector_attributes>color</selector_attributes>
                 <show_generic_images>1</show_generic_images>
                 <preselect_color>1</preselect_color>
                 <deep_link_enabled>1</deep_link_enabled>

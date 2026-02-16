@@ -31,6 +31,7 @@ class Propagation
 
     public function __construct(
         private readonly Config $config,
+        private readonly AttributeResolver $attributeResolver,
         private readonly ColorMapping $colorMapping,
         private readonly ProductRepositoryInterface $productRepository,
         private readonly ResourceConnection $resourceConnection,
@@ -70,7 +71,11 @@ class Propagation
         $storeId = $product->getStoreId();
         $cleanFirst ??= $this->config->isCleanBeforePropagate($storeId);
         $propagationRoles = $this->config->getPropagationRoles($storeId);
-        $colorAttributeCode = $this->config->getColorAttributeCode($storeId);
+        $colorAttributeCode = $this->attributeResolver->resolveForProduct($product, $storeId);
+        if ($colorAttributeCode === null) {
+            $report['errors'][] = 'No selector attribute resolves for this product';
+            return $report;
+        }
 
         $mediaMapping = $this->colorMapping->getColorMediaMapping($product, $storeId);
 
