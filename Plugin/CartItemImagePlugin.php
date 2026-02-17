@@ -6,21 +6,23 @@ namespace Rollpix\ConfigurableGallery\Plugin;
 
 use Magento\Catalog\Api\ProductRepositoryInterface;
 use Magento\Catalog\Model\Product;
+use Magento\Catalog\Model\Product\Configuration\Item\ItemInterface;
+use Magento\ConfigurableProduct\Model\Product\Configuration\Item\ItemProductResolver;
 use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
-use Magento\Checkout\CustomerData\DefaultItem;
-use Magento\Quote\Model\Quote\Item as QuoteItem;
 use Psr\Log\LoggerInterface;
 use Rollpix\ConfigurableGallery\Model\AttributeResolver;
 use Rollpix\ConfigurableGallery\Model\ColorMapping;
 use Rollpix\ConfigurableGallery\Model\Config;
 
 /**
- * Overrides cart item thumbnail with the image of the selected color (PRD §6.9).
+ * Overrides cart/checkout item thumbnail with the color-specific image (PRD §6.9).
+ *
+ * Plugins on ItemProductResolver::getFinalProduct() — the universal hook that
+ * Magento uses in ALL contexts (cart page, minicart, checkout) to determine
+ * which product image to render for a configurable cart item.
  *
  * Strategy 1: Color-specific image from parent's associated_attributes mapping.
  * Strategy 2: Simple product's own base image (fallback when no color mapping).
- *
- * sortOrder=10: base plugin for cart item image.
  */
 class CartItemImagePlugin
 {
@@ -34,44 +36,35 @@ class CartItemImagePlugin
     }
 
     /**
-     * After getting item data for the customer data section (minicart, cart page),
-     * replace product_image with the color-specific image.
-     *
-     * @param DefaultItem $subject
-     * @param array $result
-     * @param QuoteItem $item
-     * @return array
+     * After Magento resolves which product to use for the cart item image,
+     * override the image roles with the color-specific image if available.
      */
-    public function afterGetItemData(DefaultItem $subject, array $result, QuoteItem $item): array
-    {
-        $this->logger->info('Rollpix ConfigurableGallery: Cart plugin called', [
-            'item_id' => $item->getId(),
-            'product_type' => $item->getProductType(),
-            'enabled' => $this->config->isEnabled(),
-            'cart_override' => $this->config->isCartImageOverrideEnabled(),
-        ]);
-
-        if (!$this->config->isEnabled()) {
-            return $result;
-        }
-
-        if (!$this->config->isCartImageOverrideEnabled()) {
+    public function afterGetFinalProduct(
+        ItemProductResolver $subject,
+        Product $result,
+        ItemInterface $item
+    ): Product {
+        if (!$this->config->isEnabled() || !$this->config->isCartImageOverrideEnabled()) {
             return $result;
         }
 
         try {
-            $colorImage = $this->getColorImageForCartItem($item);
-            $this->logger->info('Rollpix ConfigurableGallery: Cart image result', [
-                'item_id' => $item->getId(),
-                'color_image' => $colorImage,
-                'original_src' => $result['product_image']['src'] ?? 'N/A',
+            $colorImageFile = $this->resolveColorImage($item);
+
+            $this->logger->info('Rollpix ConfigurableGallery: Cart image resolve', [
+                'item_id' => method_exists($item, 'getId') ? $item->getId() : 'N/A',
+                'result_product' => $result->getId(),
+                'color_image' => $colorImageFile,
             ]);
-            if ($colorImage !== null) {
-                $result['product_image']['src'] = $colorImage;
+
+            if ($colorImageFile !== null) {
+                // Set color-specific image on all image roles so it's used everywhere
+                $result->setData('image', $colorImageFile);
+                $result->setData('small_image', $colorImageFile);
+                $result->setData('thumbnail', $colorImageFile);
             }
         } catch (\Exception $e) {
-            $this->logger->error('Rollpix ConfigurableGallery: Failed to override cart item image', [
-                'item_id' => $item->getId(),
+            $this->logger->error('Rollpix ConfigurableGallery: Cart image error', [
                 'exception' => $e->getMessage(),
             ]);
         }
@@ -80,67 +73,67 @@ class CartItemImagePlugin
     }
 
     /**
-     * Get the color-specific image URL for a cart item.
+     * Resolve the color-specific image file path for a cart item.
+     *
+     * @return string|null Image file relative path (e.g. "/r/e/remera-roja.jpg") or null
      */
-    private function getColorImageForCartItem(QuoteItem $item): ?string
+    private function resolveColorImage(ItemInterface $item): ?string
     {
-        // Get the parent configurable product
-        $parentItem = $item->getParentItem();
-        if ($parentItem !== null) {
-            $configurableProduct = $parentItem->getProduct();
-            $simpleProduct = $item->getProduct();
-        } else {
-            $product = $item->getProduct();
-            if ($product->getTypeId() !== Configurable::TYPE_CODE) {
-                return null;
-            }
+        // ItemInterface in cart context is a QuoteItem
+        $configurableProduct = null;
+        $simpleProduct = null;
 
-            $configurableProduct = $product;
+        // Navigate the quote item relationship to find configurable + simple
+        if (method_exists($item, 'getOptionByCode')) {
             $simpleOption = $item->getOptionByCode('simple_product');
-            if ($simpleOption === null) {
-                return null;
+            $product = $item->getProduct();
+
+            if ($product !== null && $product->getTypeId() === Configurable::TYPE_CODE) {
+                $configurableProduct = $product;
+                $simpleProduct = $simpleOption?->getProduct();
             }
-            $simpleProduct = $simpleOption->getProduct();
+        }
+
+        // Also check parent item relationship
+        if ($configurableProduct === null && method_exists($item, 'getParentItem')) {
+            $parentItem = $item->getParentItem();
+            if ($parentItem !== null) {
+                $parentProduct = $parentItem->getProduct();
+                if ($parentProduct !== null && $parentProduct->getTypeId() === Configurable::TYPE_CODE) {
+                    $configurableProduct = $parentProduct;
+                    $simpleProduct = $item->getProduct();
+                }
+            }
         }
 
         if ($configurableProduct === null || $simpleProduct === null) {
             return null;
         }
 
-        if ($configurableProduct->getTypeId() !== Configurable::TYPE_CODE) {
-            return null;
-        }
-
-        // Resolve the selector attribute — only needs product ID + type instance (no EAV reload)
+        // Resolve the selector attribute
         $colorAttributeCode = $this->attributeResolver->resolveForProduct($configurableProduct);
         if ($colorAttributeCode === null) {
-            $this->logger->info('Rollpix ConfigurableGallery: Cart image — no selector attribute', [
-                'configurable_id' => $configurableProduct->getId(),
-            ]);
             return null;
         }
 
-        // Quote item products may not have EAV attributes loaded — reload only if needed
+        // Get color option ID — reload simple product if EAV data not loaded
         $colorOptionId = $simpleProduct->getData($colorAttributeCode);
         if ($colorOptionId === null) {
             $simpleProduct = $this->productRepository->getById((int) $simpleProduct->getId());
             $colorOptionId = $simpleProduct->getData($colorAttributeCode);
         }
+
         if ($colorOptionId === null) {
-            $this->logger->info('Rollpix ConfigurableGallery: Cart image — no color value on simple', [
-                'simple_id' => $simpleProduct->getId(),
-                'attribute' => $colorAttributeCode,
-            ]);
             return null;
         }
 
         $colorOptionId = (int) $colorOptionId;
 
-        // Get images for this color from the configurable parent
+        // Strategy 1: color-specific image from parent's associated_attributes mapping
         $mediaMapping = $this->colorMapping->getColorMediaMapping($configurableProduct);
         $colorKey = (string) $colorOptionId;
 
-        $this->logger->info('Rollpix ConfigurableGallery: Cart image mapping lookup', [
+        $this->logger->info('Rollpix ConfigurableGallery: Cart mapping lookup', [
             'configurable_id' => $configurableProduct->getId(),
             'simple_id' => $simpleProduct->getId(),
             'color_attribute' => $colorAttributeCode,
@@ -149,20 +142,17 @@ class CartItemImagePlugin
             'match' => isset($mediaMapping[$colorKey]),
         ]);
 
-        // Strategy 1: color-specific image from parent's associated_attributes mapping
         if (isset($mediaMapping[$colorKey]) && !empty($mediaMapping[$colorKey]['images'])) {
-            $firstImage = $mediaMapping[$colorKey]['images'][0];
-            $file = $firstImage['file'] ?? null;
-
+            $file = $mediaMapping[$colorKey]['images'][0]['file'] ?? null;
             if ($file !== null) {
-                return '/media/catalog/product' . $file;
+                return $file;
             }
         }
 
         // Strategy 2: simple product's own base image
         $simpleImage = $simpleProduct->getImage();
         if ($simpleImage && $simpleImage !== 'no_selection') {
-            return '/media/catalog/product' . $simpleImage;
+            return $simpleImage;
         }
 
         return null;
