@@ -75,18 +75,15 @@ class CartItemImagePlugin
         // Get the parent configurable product
         $parentItem = $item->getParentItem();
         if ($parentItem !== null) {
-            // This is the simple child — get parent
             $configurableProduct = $parentItem->getProduct();
             $simpleProduct = $item->getProduct();
         } else {
-            // This might be the configurable item itself
             $product = $item->getProduct();
             if ($product->getTypeId() !== Configurable::TYPE_CODE) {
                 return null;
             }
 
             $configurableProduct = $product;
-            // Get the simple product from options
             $simpleOption = $item->getOptionByCode('simple_product');
             if ($simpleOption === null) {
                 return null;
@@ -102,20 +99,29 @@ class CartItemImagePlugin
             return null;
         }
 
+        // Reload both products via repository to ensure full EAV data is available
+        $configurableProduct = $this->productRepository->getById(
+            (int) $configurableProduct->getId()
+        );
+        $simpleProduct = $this->productRepository->getById(
+            (int) $simpleProduct->getId()
+        );
+
         // Resolve the selector attribute for this configurable product
         $colorAttributeCode = $this->attributeResolver->resolveForProduct($configurableProduct);
         if ($colorAttributeCode === null) {
+            $this->logger->debug('Rollpix ConfigurableGallery: Cart image — no selector attribute', [
+                'configurable_id' => $configurableProduct->getId(),
+            ]);
             return null;
         }
 
-        // Quote item products may not have EAV attributes loaded — reload if needed
         $colorOptionId = $simpleProduct->getData($colorAttributeCode);
         if ($colorOptionId === null) {
-            $simpleProduct = $this->productRepository->getById((int) $simpleProduct->getId());
-            $colorOptionId = $simpleProduct->getData($colorAttributeCode);
-        }
-
-        if ($colorOptionId === null) {
+            $this->logger->debug('Rollpix ConfigurableGallery: Cart image — no color value on simple', [
+                'simple_id' => $simpleProduct->getId(),
+                'attribute' => $colorAttributeCode,
+            ]);
             return null;
         }
 
@@ -124,6 +130,15 @@ class CartItemImagePlugin
         // Get images for this color from the configurable parent
         $mediaMapping = $this->colorMapping->getColorMediaMapping($configurableProduct);
         $colorKey = (string) $colorOptionId;
+
+        $this->logger->debug('Rollpix ConfigurableGallery: Cart image mapping lookup', [
+            'configurable_id' => $configurableProduct->getId(),
+            'simple_id' => $simpleProduct->getId(),
+            'color_attribute' => $colorAttributeCode,
+            'color_option_id' => $colorOptionId,
+            'mapping_keys' => array_keys($mediaMapping),
+            'match' => isset($mediaMapping[$colorKey]),
+        ]);
 
         // Strategy 1: color-specific image from parent's associated_attributes mapping
         if (isset($mediaMapping[$colorKey]) && !empty($mediaMapping[$colorKey]['images'])) {
