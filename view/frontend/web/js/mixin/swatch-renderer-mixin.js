@@ -255,6 +255,7 @@ define([
              */
             _OnClick: function ($this, widget) {
                 this._super($this, widget);
+                this._scrollOnColorSwatchChange($this);
                 this._handleRollpixSwatchChange($this);
             },
 
@@ -263,7 +264,27 @@ define([
              */
             _OnChange: function ($this, widget) {
                 this._super($this, widget);
+                this._scrollOnColorSwatchChange($this);
                 this._handleRollpixSwatchChange($this);
+            },
+
+            /**
+             * Scroll to top when a color swatch is clicked.
+             * Different colors may have different image counts — scrolling
+             * ensures the gallery is visible after switching.
+             */
+            _scrollOnColorSwatchChange: function ($swatch) {
+                var rollpixConfig = this._getRollpixConfig();
+                if (!rollpixConfig || !rollpixConfig.enabled || !rollpixConfig.colorAttributeId) {
+                    return;
+                }
+
+                var attributeId = $swatch.closest('.swatch-attribute').attr('data-attribute-id')
+                    || $swatch.closest('.swatch-attribute').attr('attribute-id');
+
+                if (parseInt(attributeId, 10) === rollpixConfig.colorAttributeId) {
+                    window.scrollTo({top: 0, behavior: 'smooth'});
+                }
             },
 
             /**
