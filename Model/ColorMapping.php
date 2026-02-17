@@ -198,7 +198,8 @@ class ColorMapping
 
     /**
      * Get color option labels for a configurable product.
-     * Uses the AttributeResolver to determine which attribute to read labels from.
+     * Only returns options actually used by the product's simple children,
+     * not all options in the system for the color attribute.
      *
      * @return array<int, string> option_id => label
      */
@@ -214,6 +215,14 @@ class ColorMapping
         }
 
         try {
+            $colorAttributeId = $this->attributeResolver->resolveAttributeId($product, $storeId);
+            if ($colorAttributeId === null) {
+                return [];
+            }
+
+            // Get option IDs actually used by this product's children
+            $usedOptionIds = $this->getUsedOptionIds($product, $colorAttributeId);
+
             $attribute = $this->attributeRepository->get(
                 Product::ENTITY,
                 $colorAttributeCode
@@ -223,7 +232,11 @@ class ColorMapping
             $options = $attribute->getSource()->getAllOptions(false);
             foreach ($options as $option) {
                 if ($option['value'] !== '' && $option['value'] !== null) {
-                    $labels[(int) $option['value']] = (string) $option['label'];
+                    $optionId = (int) $option['value'];
+                    // Filter: only include options used by this configurable's children
+                    if (empty($usedOptionIds) || isset($usedOptionIds[$optionId])) {
+                        $labels[$optionId] = (string) $option['label'];
+                    }
                 }
             }
 
@@ -235,5 +248,29 @@ class ColorMapping
             );
             return [];
         }
+    }
+
+    /**
+     * Get option IDs actually used by a configurable product's children for a given attribute.
+     *
+     * @return array<int, true> option_id => true (used as a lookup set)
+     */
+    private function getUsedOptionIds(Product $product, int $attributeId): array
+    {
+        /** @var Configurable $typeInstance */
+        $typeInstance = $product->getTypeInstance();
+        $configurableOptions = $typeInstance->getConfigurableOptions($product);
+
+        $usedIds = [];
+        if (isset($configurableOptions[$attributeId])) {
+            foreach ($configurableOptions[$attributeId] as $option) {
+                $valueIndex = (int) ($option['value_index'] ?? 0);
+                if ($valueIndex > 0) {
+                    $usedIds[$valueIndex] = true;
+                }
+            }
+        }
+
+        return $usedIds;
     }
 }
