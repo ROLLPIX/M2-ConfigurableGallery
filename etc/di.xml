@@ -27,16 +27,6 @@
     </type>
 
     <!--
-        Plugin: Override cart item image with color-specific image.
-        sortOrder=10: base plugin, no expected conflicts.
-    -->
-    <type name="Magento\Checkout\CustomerData\AbstractItem">
-        <plugin name="rollpix_cg_cart_item_image"
-                type="Rollpix\ConfigurableGallery\Plugin\CartItemImagePlugin"
-                sortOrder="10"/>
-    </type>
-
-    <!--
         StockFilter: inject MSI dependencies as nullable.
         When Magento_InventorySales is not installed, these will be null
         and the class falls back to legacy stock check.

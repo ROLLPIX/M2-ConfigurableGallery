@@ -7,7 +7,7 @@ namespace Rollpix\ConfigurableGallery\Plugin;
 use Magento\Catalog\Api\ProductRepositoryInterface;
 use Magento\Catalog\Model\Product;
 use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
-use Magento\Checkout\CustomerData\AbstractItem;
+use Magento\Checkout\CustomerData\DefaultItem;
 use Magento\Quote\Model\Quote\Item as QuoteItem;
 use Psr\Log\LoggerInterface;
 use Rollpix\ConfigurableGallery\Model\AttributeResolver;
@@ -37,12 +37,12 @@ class CartItemImagePlugin
      * After getting item data for the customer data section (minicart, cart page),
      * replace product_image with the color-specific image.
      *
-     * @param AbstractItem $subject
+     * @param DefaultItem $subject
      * @param array $result
      * @param QuoteItem $item
      * @return array
      */
-    public function afterGetItemData(AbstractItem $subject, array $result, QuoteItem $item): array
+    public function afterGetItemData(DefaultItem $subject, array $result, QuoteItem $item): array
     {
         $this->logger->info('Rollpix ConfigurableGallery: Cart plugin called', [
             'item_id' => $item->getId(),

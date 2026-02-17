@@ -37,4 +37,16 @@
                 type="Rollpix\ConfigurableGallery\Plugin\Plp\ImageFlipCompatPlugin"
                 sortOrder="110"/>
     </type>
+
+    <!--
+        Plugin: Override cart/checkout item image with color-specific image.
+        Targets DefaultItem (the concrete class Magento instantiates) instead
+        of AbstractItem, to ensure the interceptor is generated.
+        sortOrder=10: base plugin, no expected conflicts.
+    -->
+    <type name="Magento\Checkout\CustomerData\DefaultItem">
+        <plugin name="rollpix_cg_cart_item_image"
+                type="Rollpix\ConfigurableGallery\Plugin\CartItemImagePlugin"
+                sortOrder="10"/>
+    </type>
 </config>
