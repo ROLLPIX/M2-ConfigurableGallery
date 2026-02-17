@@ -50,13 +50,6 @@ class CartItemImagePlugin
 
         try {
             $colorImageFile = $this->resolveColorImage($item);
-
-            $this->logger->info('Rollpix ConfigurableGallery: Cart image resolve', [
-                'item_id' => method_exists($item, 'getId') ? $item->getId() : 'N/A',
-                'result_product' => $result->getId(),
-                'color_image' => $colorImageFile,
-            ]);
-
             if ($colorImageFile !== null) {
                 // Set color-specific image on all image roles so it's used everywhere
                 $result->setData('image', $colorImageFile);
@@ -132,15 +125,6 @@ class CartItemImagePlugin
         // Strategy 1: color-specific image from parent's associated_attributes mapping
         $mediaMapping = $this->colorMapping->getColorMediaMapping($configurableProduct);
         $colorKey = (string) $colorOptionId;
-
-        $this->logger->info('Rollpix ConfigurableGallery: Cart mapping lookup', [
-            'configurable_id' => $configurableProduct->getId(),
-            'simple_id' => $simpleProduct->getId(),
-            'color_attribute' => $colorAttributeCode,
-            'color_option_id' => $colorOptionId,
-            'mapping_keys' => array_keys($mediaMapping),
-            'match' => isset($mediaMapping[$colorKey]),
-        ]);
 
         if (isset($mediaMapping[$colorKey]) && !empty($mediaMapping[$colorKey]['images'])) {
             $file = $mediaMapping[$colorKey]['images'][0]['file'] ?? null;
