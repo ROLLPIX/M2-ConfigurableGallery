@@ -7,10 +7,17 @@
  * use closure-private state. This adapter therefore works by showing/hiding
  * DOM elements using a CSS class.
  *
- * Matching: the GallerySwitcher filters from the same galleryImages array,
- * so filtered results are the exact same JS objects (reference equality).
- * We find each filtered image's index in the full array to map to DOM items.
- * Fallback: value_id matching. Safety: never hides ALL items.
+ * Index-based filtering: window.rollpixGalleryImages[i] corresponds 1:1
+ * to the i-th .rp-gallery-item in the DOM (both come from the same
+ * $product->getMediaGalleryImages() collection). The adapter uses
+ * colorOptionId + colorMapping to compute which indices are visible,
+ * then toggles a CSS hidden class on the DOM items.
+ *
+ * Matching strategies (in priority order):
+ *   1. Direct colorMapping — uses colorOptionId + value_ids from config
+ *   2. Reference equality — GallerySwitcher returns same JS object refs
+ *   3. value_id matching — compares value_id properties
+ * Safety: never hides ALL items.
  *
  * Layout support:
  *   - vertical/grid/fashion: show/hide items + thumbnails via CSS class
@@ -22,6 +29,7 @@ define([
     'use strict';
 
     var HIDDEN_CLASS = 'rp-cg-hidden';
+    var LOG_PREFIX = '[RollpixCG Adapter]';
 
     /**
      * @param {Object} gallerySwitcher - GallerySwitcher instance
@@ -57,69 +65,102 @@ define([
             var self = this;
             document.addEventListener('rollpix:gallery:filter', function (event) {
                 var detail = event.detail || {};
-                self._updateGallery(detail.images, detail.isInitial);
+                self._updateGallery(detail.images, detail.isInitial, detail.colorOptionId);
             });
         },
 
         /**
          * Update the Rollpix Product Gallery to show only filtered images.
          *
-         * Matching strategy: the GallerySwitcher filters from the same
-         * window.rollpixGalleryImages array, so filtered images are the exact
-         * same JS objects (reference equality). We find each filtered image's
-         * index in the full array, then show/hide DOM items by that index.
+         * Uses three matching strategies in priority order:
          *
-         * Fallback: if reference matching finds nothing, tries value_id matching.
-         * Safety: if neither strategy finds any visible items, aborts to prevent
+         * 1. Direct colorMapping: reads colorOptionId + config.colorMapping to
+         *    determine allowed value_ids, then checks each gallery image's value_id.
+         *    Most robust — doesn't depend on reference equality or filtered array.
+         *
+         * 2. Reference matching: GallerySwitcher returns same JS objects from
+         *    window.rollpixGalleryImages, so === comparison finds indices.
+         *
+         * 3. value_id matching: compares value_id between filtered and full arrays.
+         *
+         * Safety: if no strategy finds visible items, aborts to prevent
          * hiding the entire gallery.
          *
          * @param {Array} images - Filtered gallery images
          * @param {boolean} isInitial - Whether this is the initial page load
+         * @param {number|null} colorOptionId - Selected color option ID
          */
-        _updateGallery: function (images, isInitial) {
+        _updateGallery: function (images, isInitial, colorOptionId) {
             if (!images) {
                 return;
             }
 
             var $gallery = this._getGallery();
             if (!$gallery) {
-                if (this._readyRetries < 15) {
+                if (this._readyRetries < 20) {
                     this._readyRetries++;
                     var self = this;
+                    var retryImages = images;
+                    var retryIsInitial = isInitial;
+                    var retryColorId = colorOptionId;
                     setTimeout(function () {
-                        self._updateGallery(images, isInitial);
+                        self._updateGallery(retryImages, retryIsInitial, retryColorId);
                     }, 200);
+                } else {
+                    console.warn(LOG_PREFIX, 'Gallery DOM not found after max retries');
                 }
                 return;
             }
             this._readyRetries = 0;
 
             var allImages = window.rollpixGalleryImages || [];
+            var config = window.rollpixGalleryConfig || {};
+            var $items = $gallery.find('.rp-gallery-item');
+
+            // Diagnostic logging
+            console.warn(LOG_PREFIX, 'Filter:', {
+                colorOptionId: colorOptionId,
+                filteredCount: images.length,
+                galleryImagesCount: allImages.length,
+                domItemsCount: $items.length,
+                adapter: config.galleryAdapter
+            });
+
             if (!allImages.length) {
+                console.warn(LOG_PREFIX, 'window.rollpixGalleryImages is empty — cannot filter');
                 return;
             }
 
-            // Strategy 1: Reference-based matching (most robust).
-            // The filtered images are the same JS objects from the galleryImages
-            // array, so === comparison finds their index in the full array.
-            var visibleSet = {};
-            for (var i = 0; i < images.length; i++) {
-                for (var j = 0; j < allImages.length; j++) {
-                    if (images[i] === allImages[j]) {
-                        visibleSet[j] = true;
-                        break;
+            // --- Strategy 1: Direct colorMapping filtering ---
+            // Uses colorOptionId + config to independently compute visible indices.
+            // This bypasses any reference/value_id matching issues.
+            var visibleSet = this._computeVisibleFromConfig(allImages, colorOptionId, config);
+            var matchCount = this._countKeys(visibleSet);
+
+            if (matchCount > 0) {
+                console.warn(LOG_PREFIX, 'Strategy 1 (colorMapping):', matchCount, 'matches');
+            }
+
+            // --- Strategy 2: Reference matching (fallback) ---
+            if (matchCount === 0 && images.length > 0) {
+                visibleSet = {};
+                for (var i = 0; i < images.length; i++) {
+                    for (var j = 0; j < allImages.length; j++) {
+                        if (images[i] === allImages[j]) {
+                            visibleSet[j] = true;
+                            break;
+                        }
                     }
+                }
+                matchCount = this._countKeys(visibleSet);
+                if (matchCount > 0) {
+                    console.warn(LOG_PREFIX, 'Strategy 2 (reference):', matchCount, 'matches');
                 }
             }
 
-            // Strategy 2: If reference matching found nothing, try value_id
-            var matchCount = 0;
-            for (var k in visibleSet) {
-                if (visibleSet.hasOwnProperty(k)) {
-                    matchCount++;
-                }
-            }
+            // --- Strategy 3: value_id matching (last resort) ---
             if (matchCount === 0 && images.length > 0) {
+                visibleSet = {};
                 var visibleValueIds = {};
                 for (var vi = 0; vi < images.length; vi++) {
                     var vid = images[vi].value_id || images[vi].valueId;
@@ -134,9 +175,25 @@ define([
                         visibleSet[ai] = true;
                     }
                 }
+                matchCount = this._countKeys(visibleSet);
+                if (matchCount > 0) {
+                    console.warn(LOG_PREFIX, 'Strategy 3 (value_id):', matchCount, 'matches');
+                }
             }
 
-            var $items = $gallery.find('.rp-gallery-item');
+            if (matchCount === 0) {
+                // Log diagnostic info to help debug
+                var sampleImage = allImages[0] || {};
+                console.warn(LOG_PREFIX, 'No matches found. Sample image data:', {
+                    value_id: sampleImage.value_id,
+                    valueId: sampleImage.valueId,
+                    associatedAttributes: sampleImage.associatedAttributes,
+                    img: sampleImage.img ? sampleImage.img.substring(0, 80) : null
+                });
+                console.warn(LOG_PREFIX, 'Config colorMapping keys:', Object.keys(config.colorMapping || {}));
+            }
+
+            // Apply show/hide to DOM
             var $thumbs = $gallery.find('.rp-thumbnail-item');
             var visibleIndexes = [];
 
@@ -156,6 +213,7 @@ define([
 
             // Safety: never hide ALL items — abort and restore if that would happen
             if (visibleIndexes.length === 0 && $items.length > 0) {
+                console.warn(LOG_PREFIX, 'Safety guard: restoring all items (0 visible)');
                 $items.removeClass(HIDDEN_CLASS);
                 $thumbs.removeClass(HIDDEN_CLASS);
                 return;
@@ -167,6 +225,132 @@ define([
             } else {
                 this._updateNonSliderState($gallery, $thumbs, visibleIndexes);
             }
+        },
+
+        /**
+         * Compute visible indices directly from colorMapping config.
+         *
+         * Uses colorOptionId + colorMapping to determine which value_ids
+         * should be visible, then checks each gallery image's value_id.
+         * Falls back to associatedAttributes if value_ids are not present.
+         *
+         * @param {Array} allImages - Full gallery images array
+         * @param {number|null} colorOptionId - Selected color, or null for all
+         * @param {Object} config - rollpixGalleryConfig
+         * @returns {Object} visibleSet - map of index => true
+         */
+        _computeVisibleFromConfig: function (allImages, colorOptionId, config) {
+            var colorMapping = config.colorMapping || {};
+            var showGeneric = config.showGenericImages !== false;
+            var visibleSet = {};
+            var allowedValueIds = [];
+
+            if (colorOptionId === null || colorOptionId === undefined) {
+                // No color selected — show all mapped images
+                for (var key in colorMapping) {
+                    if (!colorMapping.hasOwnProperty(key)) {
+                        continue;
+                    }
+                    if (key === 'null' && !showGeneric) {
+                        continue;
+                    }
+                    var info = colorMapping[key];
+                    allowedValueIds = allowedValueIds.concat(info.images || [], info.videos || []);
+                }
+            } else {
+                // Specific color — show color images + generics
+                var colorKey = String(colorOptionId);
+                var colorInfo = colorMapping[colorKey];
+                var genericInfo = colorMapping['null'];
+
+                if (colorInfo) {
+                    allowedValueIds = allowedValueIds.concat(
+                        colorInfo.images || [],
+                        colorInfo.videos || []
+                    );
+                }
+                if (genericInfo && showGeneric) {
+                    allowedValueIds = allowedValueIds.concat(
+                        genericInfo.images || [],
+                        genericInfo.videos || []
+                    );
+                }
+            }
+
+            if (allowedValueIds.length === 0) {
+                return visibleSet;
+            }
+
+            // Build a lookup set for O(1) checking
+            var allowedSet = {};
+            for (var av = 0; av < allowedValueIds.length; av++) {
+                allowedSet[String(allowedValueIds[av])] = true;
+            }
+
+            for (var i = 0; i < allImages.length; i++) {
+                var img = allImages[i];
+                var valueId = img.value_id || img.valueId;
+
+                if (valueId !== undefined && valueId !== null) {
+                    // Match by value_id against allowed set
+                    if (allowedSet[String(parseInt(valueId, 10))]) {
+                        visibleSet[i] = true;
+                    }
+                } else {
+                    // No value_id — check associatedAttributes
+                    var assoc = img.associatedAttributes || img.associated_attributes;
+
+                    if (assoc === null || assoc === undefined || assoc === '') {
+                        // Generic/unassociated image
+                        if (showGeneric) {
+                            visibleSet[i] = true;
+                        }
+                    } else if (colorOptionId !== null && colorOptionId !== undefined) {
+                        // Has associatedAttributes — check if it matches the color
+                        if (this._matchesColor(assoc, colorOptionId, config.colorAttributeId)) {
+                            visibleSet[i] = true;
+                        }
+                        // Also include if generic mapping allows
+                    }
+                }
+            }
+
+            return visibleSet;
+        },
+
+        /**
+         * Check if an associatedAttributes string matches a color option.
+         *
+         * @param {string} associatedAttributes - e.g. "attribute93-318"
+         * @param {number} optionId - Color option ID
+         * @param {number} colorAttributeId - The color attribute ID
+         * @returns {boolean}
+         */
+        _matchesColor: function (associatedAttributes, optionId, colorAttributeId) {
+            if (!associatedAttributes || !colorAttributeId) {
+                return false;
+            }
+            var needle = 'attribute' + colorAttributeId + '-' + optionId;
+            var parts = associatedAttributes.split(',');
+            for (var i = 0; i < parts.length; i++) {
+                if (parts[i].trim() === needle) {
+                    return true;
+                }
+            }
+            return false;
+        },
+
+        /**
+         * Count keys in an object (for IE compat, no Object.keys).
+         */
+        _countKeys: function (obj) {
+            var count = 0;
+            for (var k in obj) {
+                if (obj.hasOwnProperty(k)) {
+                    count++;
+                }
+            }
+            return count;
         },
 
         /**
