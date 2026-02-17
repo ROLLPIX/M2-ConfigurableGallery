@@ -22,6 +22,12 @@
  * Layout support:
  *   - vertical/grid/fashion: show/hide items + thumbnails via CSS class
  *   - slider: additionally manages dots, arrows, and active slide state
+ *
+ * Native fallback (swapImages):
+ *   When no color-media mappings exist (images on child products only),
+ *   swaps DOM image sources directly using simple product images from
+ *   jsonConfig.images[productId]. Provides gallery updates without
+ *   requiring Fotorama or associated_attributes.
  */
 define([
     'jquery'
@@ -39,6 +45,8 @@ define([
         this.$gallery = null;
         this._isSlider = false;
         this._readyRetries = 0;
+        this._originalState = null;
+        this._swapRetries = 0;
         this._injectStyles();
         this._bindEvents();
     }
@@ -435,6 +443,186 @@ define([
                     $highlight[0].offsetHeight;
                     $highlight.removeClass('rp-highlight-no-transition');
                 }
+            }
+        },
+
+        /**
+         * Swap gallery images with simple product images (native fallback).
+         *
+         * Called when ConfigurableGallery has no color-media mappings but
+         * Rollpix Product Gallery is active (no Fotorama to delegate to).
+         * Swaps img src/href attributes in the DOM using images from
+         * jsonConfig.images[productId].
+         *
+         * @param {Array|null} images - Image objects with {thumb, img, full, position},
+         *   or null/empty to restore original configurable gallery.
+         */
+        swapImages: function (images) {
+            var $gallery = this._getGallery();
+            if (!$gallery) {
+                if (this._swapRetries < 20) {
+                    this._swapRetries++;
+                    var self = this;
+                    var retryImages = images;
+                    setTimeout(function () {
+                        self.swapImages(retryImages);
+                    }, 200);
+                }
+                return;
+            }
+            this._swapRetries = 0;
+
+            var $items = $gallery.find('.rp-gallery-item');
+            var $thumbs = $gallery.find('.rp-thumbnail-item');
+
+            if (!$items.length) {
+                return;
+            }
+
+            // Store original DOM state on first call
+            if (!this._originalState) {
+                this._storeOriginalState($items, $thumbs);
+            }
+
+            // No images → restore original configurable gallery
+            if (!images || !images.length) {
+                this._restoreOriginalState($gallery, $items, $thumbs);
+                return;
+            }
+
+            // Sort by position
+            var sorted = images.slice().sort(function (a, b) {
+                return (a.position || 0) - (b.position || 0);
+            });
+
+            var domCount = $items.length;
+            var newCount = sorted.length;
+            var visibleIndexes = [];
+
+            // Unhide all first (previous swap may have hidden some)
+            $items.removeClass(HIDDEN_CLASS);
+            $thumbs.removeClass(HIDDEN_CLASS);
+
+            for (var i = 0; i < domCount; i++) {
+                if (i < newCount) {
+                    var newImg = sorted[i];
+                    var $item = $items.eq(i);
+                    var $itemImg = $item.find('img').first();
+
+                    // Update main image src
+                    if ($itemImg.length) {
+                        $itemImg.attr('src', newImg.img || newImg.full || '');
+                        if (newImg.full) {
+                            $itemImg.attr('data-zoom-image', newImg.full);
+                        }
+                    }
+                    // Update href for lightbox/zoom
+                    if ($item.is('a')) {
+                        $item.attr('href', newImg.full || newImg.img || '');
+                    }
+
+                    // Update corresponding thumbnail
+                    if (i < $thumbs.length) {
+                        var $thumbImg = $thumbs.eq(i).find('img').first();
+                        if ($thumbImg.length) {
+                            $thumbImg.attr('src', newImg.thumb || newImg.img || '');
+                        }
+                    }
+
+                    visibleIndexes.push(i);
+                } else {
+                    // Hide extra DOM items when simple product has fewer images
+                    $items.eq(i).addClass(HIDDEN_CLASS);
+                    if (i < $thumbs.length) {
+                        $thumbs.eq(i).addClass(HIDDEN_CLASS);
+                    }
+                }
+            }
+
+            // Update layout state (slider dots/arrows, thumbnail highlight)
+            if (this._isSlider) {
+                this._updateSliderState($gallery, $items, $thumbs, visibleIndexes);
+            } else {
+                this._updateNonSliderState($gallery, $thumbs, visibleIndexes);
+            }
+        },
+
+        /**
+         * Store original DOM state for later restoration on swatch deselection.
+         */
+        _storeOriginalState: function ($items, $thumbs) {
+            var self = this;
+            self._originalState = {items: [], thumbs: []};
+
+            $items.each(function () {
+                var $item = $(this);
+                var $img = $item.find('img').first();
+                self._originalState.items.push({
+                    src: $img.attr('src') || '',
+                    zoomSrc: $img.attr('data-zoom-image') || '',
+                    href: $item.is('a') ? ($item.attr('href') || '') : null
+                });
+            });
+
+            $thumbs.each(function () {
+                var $img = $(this).find('img').first();
+                self._originalState.thumbs.push({
+                    src: $img.attr('src') || ''
+                });
+            });
+        },
+
+        /**
+         * Restore original DOM state (configurable product images).
+         */
+        _restoreOriginalState: function ($gallery, $items, $thumbs) {
+            if (!this._originalState) {
+                return;
+            }
+
+            var orig = this._originalState;
+
+            $items.each(function (idx) {
+                var $item = $(this);
+                $item.removeClass(HIDDEN_CLASS);
+
+                if (idx < orig.items.length) {
+                    var data = orig.items[idx];
+                    var $img = $item.find('img').first();
+
+                    if ($img.length) {
+                        $img.attr('src', data.src);
+                        if (data.zoomSrc) {
+                            $img.attr('data-zoom-image', data.zoomSrc);
+                        }
+                    }
+                    if (data.href !== null && $item.is('a')) {
+                        $item.attr('href', data.href);
+                    }
+                }
+            });
+
+            $thumbs.each(function (idx) {
+                $(this).removeClass(HIDDEN_CLASS);
+
+                if (idx < orig.thumbs.length) {
+                    var $img = $(this).find('img').first();
+                    if ($img.length) {
+                        $img.attr('src', orig.thumbs[idx].src);
+                    }
+                }
+            });
+
+            // Restore layout state with all items visible
+            var allIndexes = [];
+            for (var i = 0; i < $items.length; i++) {
+                allIndexes.push(i);
+            }
+
+            if (this._isSlider) {
+                this._updateSliderState($gallery, $items, $thumbs, allIndexes);
+            } else {
+                this._updateNonSliderState($gallery, $thumbs, allIndexes);
             }
         },
 

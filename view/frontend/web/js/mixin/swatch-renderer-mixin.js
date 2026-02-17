@@ -323,11 +323,37 @@ define([
             },
 
             /**
+             * Check if we should use the Rollpix adapter's swapImages fallback.
+             * Returns true when:
+             *   1. Rollpix Product Gallery is the active adapter, AND
+             *   2. No color-media mappings exist (availableColors is empty), AND
+             *   3. The adapter instance is available
+             *
+             * In this scenario, native Magento can't update the gallery
+             * (no Fotorama widget), so we swap DOM image sources directly.
+             */
+            _shouldUseRollpixSwapFallback: function () {
+                var config = this._getRollpixConfig();
+                return config
+                    && config.galleryAdapter === 'rollpix'
+                    && this._rollpixAdapter
+                    && typeof this._rollpixAdapter.swapImages === 'function';
+            },
+
+            /**
              * Override: prevent native gallery update when Rollpix is active.
              * Covers Magento versions that use _processUpdateGallery.
+             *
+             * When Rollpix Product Gallery is active but no color-media mappings
+             * exist (images on child products only), redirects to adapter.swapImages()
+             * since native code can't update the Rollpix gallery (no Fotorama widget).
              */
             _processUpdateGallery: function (images) {
                 if (this._isRollpixHandlingGallery()) {
+                    return;
+                }
+                if (this._shouldUseRollpixSwapFallback()) {
+                    this._rollpixAdapter.swapImages(images);
                     return;
                 }
                 this._super(images);
@@ -338,9 +364,15 @@ define([
              * In Magento 2.4.x, _loadMedia → updateBaseImage is the main gallery
              * update path. Without blocking this, native code overwrites our
              * filtered gallery immediately after we update it.
+             *
+             * Same Rollpix Product Gallery fallback as _processUpdateGallery.
              */
             updateBaseImage: function (images, context, isInProductView) {
                 if (this._isRollpixHandlingGallery()) {
+                    return;
+                }
+                if (this._shouldUseRollpixSwapFallback()) {
+                    this._rollpixAdapter.swapImages(images);
                     return;
                 }
                 this._super(images, context, isInProductView);
