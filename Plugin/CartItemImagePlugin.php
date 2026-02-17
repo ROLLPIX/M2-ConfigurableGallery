@@ -108,7 +108,12 @@ class CartItemImagePlugin
             return null;
         }
 
+        // Quote item products may not have EAV attributes loaded — reload if needed
         $colorOptionId = $simpleProduct->getData($colorAttributeCode);
+        if ($colorOptionId === null) {
+            $simpleProduct = $this->productRepository->getById((int) $simpleProduct->getId());
+            $colorOptionId = $simpleProduct->getData($colorAttributeCode);
+        }
 
         if ($colorOptionId === null) {
             return null;
