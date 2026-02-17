@@ -127,10 +127,14 @@ define([
                     var currentColor = self._rollpixSwitcher.getCurrentColor();
 
                     if (currentColor === null) {
-                        currentColor = self._getFirstVisibleColorOptionId();
-                        if (currentColor !== null) {
-                            self._rollpixSwitcher.switchColor(currentColor, true);
-                            return true;
+                        // Only auto-detect first color when preselectColor is enabled
+                        var cfg = self._getRollpixConfig();
+                        if (cfg && cfg.preselectColor) {
+                            currentColor = self._getFirstVisibleColorOptionId();
+                            if (currentColor !== null) {
+                                self._rollpixSwitcher.switchColor(currentColor, true);
+                                return true;
+                            }
                         }
                         return false;
                     }
@@ -170,10 +174,14 @@ define([
                     var currentColor = self._rollpixSwitcher.getCurrentColor();
 
                     if (currentColor === null) {
-                        currentColor = self._getFirstVisibleColorOptionId();
-                        if (currentColor !== null) {
-                            self._rollpixSwitcher.switchColor(currentColor, true);
-                            return true;
+                        // Only auto-detect first color when preselectColor is enabled
+                        var cfg = self._getRollpixConfig();
+                        if (cfg && cfg.preselectColor) {
+                            currentColor = self._getFirstVisibleColorOptionId();
+                            if (currentColor !== null) {
+                                self._rollpixSwitcher.switchColor(currentColor, true);
+                                return true;
+                            }
                         }
                         return false;
                     }

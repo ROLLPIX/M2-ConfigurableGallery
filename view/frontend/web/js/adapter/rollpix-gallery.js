@@ -495,8 +495,22 @@ define([
                 return (a.position || 0) - (b.position || 0);
             });
 
+            // Filter out entries without valid image URLs
+            var validImages = [];
+            for (var v = 0; v < sorted.length; v++) {
+                if (sorted[v].img || sorted[v].full || sorted[v].thumb) {
+                    validImages.push(sorted[v]);
+                }
+            }
+
+            // No valid images → restore original (variant has no photos)
+            if (validImages.length === 0) {
+                this._restoreOriginalState($gallery, $items, $thumbs);
+                return;
+            }
+
             var domCount = $items.length;
-            var newCount = sorted.length;
+            var newCount = validImages.length;
             var visibleIndexes = [];
 
             // Unhide all first (previous swap may have hidden some)
@@ -505,7 +519,7 @@ define([
 
             for (var i = 0; i < domCount; i++) {
                 if (i < newCount) {
-                    var newImg = sorted[i];
+                    var newImg = validImages[i];
                     var $item = $items.eq(i);
                     var $itemImg = $item.find('img').first();
 
