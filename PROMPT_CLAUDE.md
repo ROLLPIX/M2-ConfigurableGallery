@@ -98,7 +98,7 @@ Esta separación es crítica. El backend NUNCA debe asumir qué galería se usa.
 - **NO class replacements** (`<preference>`). Solo plugins (`<plugin>`) y mixins JS.
 - **NO renderizar galería.** El módulo inyecta datos, no HTML de galería.
 - **NO jQuery en el core.** `gallery-switcher.js` debe ser vanilla JS. Solo los adaptadores específicos pueden usar jQuery (Fotorama) o Alpine.js (Hyva).
-- **NO romper productos sin el módulo activo.** Si `rollpix_gallery_enabled = 0` o el módulo está deshabilitado, Magento debe funcionar 100% vanilla.
+- **NO romper productos sin el módulo activo.** Si el módulo está deshabilitado globalmente, Magento debe funcionar 100% vanilla.
 - **NO requests AJAX** desde el frontend para obtener datos de galería. Todo va en el JSON inicial.
 
 ## Base de datos (PRD §5)
@@ -269,14 +269,17 @@ HyvaCompat/
 
 No jQuery, no RequireJS. Alpine.js puro. Escucha eventos de swatch de Hyva.
 
-### Fase 7 — Propagación + Migración
+### Fase 7 — Propagación + Migración + Clean
 
 **PRD:** §6.3, §10, §11
 
 ```
-1.  Model/Propagation.php
+1.  Model/Propagation.php (propagate + cleanChildren + removeAllImages)
 2.  Console/Command/PropagateCommand.php
-3.  Console/Command/MigrateCommand.php (3 modos: consolidate, auto-map, diagnose)
+3.  Console/Command/MigrateCommand.php (3 modos: consolidate, auto-map, diagnose + --clean flag)
+4.  Console/Command/CleanCommand.php (eliminar imágenes de simples hijos)
+5.  Observer/ProductSaveAfterObserver.php (propagación automática on save)
+6.  etc/adminhtml/events.xml (catalog_product_save_after)
 ```
 
 ## Convenciones de código (PRD §15.1)
@@ -329,14 +332,14 @@ Rollpix_ConfigurableGallery/
 │   ├── adminhtml/
 │   │   ├── di.xml
 │   │   ├── system.xml
-│   │   └── routes.xml
+│   │   └── events.xml
 │   └── frontend/
-│       ├── di.xml
-│       └── routes.xml
+│       └── di.xml
 ├── Setup/
 │   └── Patch/Data/
 │       ├── AddGalleryEnabledAttribute.php
-│       └── AddDefaultColorAttribute.php
+│       ├── AddDefaultColorAttribute.php
+│       └── HideGalleryProductAttributes.php
 ├── Model/
 │   ├── Config.php
 │   ├── ColorMapping.php
@@ -344,6 +347,8 @@ Rollpix_ConfigurableGallery/
 │   ├── StockFilter.php
 │   ├── Propagation.php
 │   └── ResourceModel/Gallery.php
+├── Observer/
+│   └── ProductSaveAfterObserver.php
 ├── Plugin/
 │   ├── AddAssociatedAttributesToGallery.php
 │   ├── EnrichGalleryJson.php
@@ -361,7 +366,8 @@ Rollpix_ConfigurableGallery/
 ├── Console/Command/
 │   ├── DiagnoseCommand.php
 │   ├── PropagateCommand.php
-│   └── MigrateCommand.php
+│   ├── MigrateCommand.php
+│   └── CleanCommand.php
 ├── view/
 │   ├── adminhtml/
 │   │   ├── layout/
@@ -417,7 +423,8 @@ Rollpix_ConfigurableGallery/
         "magento/module-configurable-product": "*",
         "magento/module-swatches": "*",
         "magento/module-eav": "*",
-        "magento/module-checkout": "*"
+        "magento/module-checkout": "*",
+        "magento/module-media-storage": "*"
     },
     "suggest": {
         "rollpix/module-product-gallery-style": "For Rollpix Gallery adapter",
@@ -459,8 +466,12 @@ bin/magento setup:static-content:deploy -f
 1. **No usar `$product->load()`** en plugins de listado. Es N+1. Usar datos del collection.
 2. **No asumir que jQuery existe** en gallery-switcher.js. Es core compartido.
 3. **No usar `<preference>`** para nada. Siempre plugins o mixins.
-4. **No olvidar el check de `rollpix_gallery_enabled`** en cada plugin. Si es false → return sin modificar.
+4. **No olvidar el check de `Config::isEnabled()`** en cada plugin. Si el módulo está globalmente desactivado → return sin modificar.
 5. **No olvidar el check de `propagation_mode`** en plugins PLP. Si propagación activa → return sin modificar.
 6. **No olvidar verificar `ModuleManager::isEnabled()`** en plugins de compat antes de ejecutar lógica.
 7. **No cachear datos de stock** en el JSON de página. El stock cambia y el FPC puede servir datos desactualizados. Usar customer-data sections si es necesario.
 8. **No hardcodear attribute_id 92** para color. Siempre leer de config `color_attribute_code`.
+9. **Cart/checkout image override**: usar `ItemProductResolver::getFinalProduct()` como hook — es el único punto universal que cubre cart page, mini-cart y checkout. `DefaultItem::getItemData()` solo afecta la sección KO.js del mini-cart.
+10. **Plugins sobre clases abstractas** pueden no generar interceptors. Siempre apuntar a clases concretas.
+11. **`logger->debug()`** va a `var/log/debug.log` y requiere debug logging habilitado. Usar `->info()` para `system.log` en staging/production.
+12. **Productos del quote** (cart items) no tienen atributos EAV cargados. Recargar via `ProductRepository::getById()` si se necesitan atributos.

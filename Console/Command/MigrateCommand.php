@@ -32,7 +32,6 @@ class MigrateCommand extends Command
     private const OPTION_PRODUCT_ID = 'product-id';
     private const OPTION_ALL = 'all';
     private const OPTION_DRY_RUN = 'dry-run';
-    private const OPTION_SOURCE = 'source';
     private const OPTION_CLEAN = 'clean';
 
     public function __construct(
@@ -76,13 +75,6 @@ class MigrateCommand extends Command
                 'Solo reporte, sin cambios'
             )
             ->addOption(
-                self::OPTION_SOURCE,
-                null,
-                InputOption::VALUE_OPTIONAL,
-                'Fuente de datos: mango | simples | both',
-                'both'
-            )
-            ->addOption(
                 self::OPTION_CLEAN,
                 null,
                 InputOption::VALUE_NONE,
@@ -102,7 +94,6 @@ class MigrateCommand extends Command
         $productId = $input->getOption(self::OPTION_PRODUCT_ID);
         $all = $input->getOption(self::OPTION_ALL);
         $dryRun = $input->getOption(self::OPTION_DRY_RUN);
-        $source = $input->getOption(self::OPTION_SOURCE);
         $clean = $input->getOption(self::OPTION_CLEAN);
 
         if (!in_array($mode, ['diagnose', 'consolidate', 'auto-map'], true)) {
@@ -138,7 +129,7 @@ class MigrateCommand extends Command
         foreach ($collection as $product) {
             match ($mode) {
                 'diagnose' => $this->modeDiagnose($product, $output),
-                'consolidate' => $this->modeConsolidate($product, $source, $dryRun, $clean, $output),
+                'consolidate' => $this->modeConsolidate($product, $dryRun, $clean, $output),
                 'auto-map' => $this->modeAutoMap($product, $dryRun, $output),
             };
         }
@@ -239,7 +230,6 @@ class MigrateCommand extends Command
      */
     private function modeConsolidate(
         Product $product,
-        string $source,
         bool $dryRun,
         bool $clean,
         OutputInterface $output

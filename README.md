@@ -92,7 +92,7 @@ bin/magento setup:upgrade
 
 | Field | Default | Description |
 |---|---|---|
-| Cart Image Override | Yes | Show the selected color's image in cart (only when propagation is disabled) |
+| Cart Image Override | Yes | Show the selected color's image in cart, mini-cart, and checkout |
 
 ### Advanced
 
@@ -185,21 +185,32 @@ bin/magento rollpix:gallery:propagate --all --clean-first
 
 Copies images from configurable parents to simple children filtered by color. Propagated images are flagged so they are not confused with manually uploaded images.
 
+### Clean
+
+```bash
+bin/magento rollpix:gallery:clean --product-id=123
+bin/magento rollpix:gallery:clean --all
+bin/magento rollpix:gallery:clean --all --dry-run
+```
+
+Removes ALL images from simple children of configurable products. Useful for resetting propagated images or debugging.
+
 ### Migrate
 
 ```bash
 bin/magento rollpix:gallery:migrate --mode=diagnose --all
-bin/magento rollpix:gallery:migrate --mode=consolidate --all --dry-run
-bin/magento rollpix:gallery:migrate --mode=auto-map --all --source=simples
+bin/magento rollpix:gallery:migrate --mode=consolidate --product-id=123 --dry-run
+bin/magento rollpix:gallery:migrate --mode=consolidate --all --clean
+bin/magento rollpix:gallery:migrate --mode=auto-map --all --dry-run
 ```
 
 | Mode | Description |
 |---|---|
 | `diagnose` | Report current state without changes |
-| `consolidate` | Move unique images from simples to the configurable parent (dedup by MD5) |
+| `consolidate` | Move images from simples to the configurable parent, dedup by color (one child per color) |
 | `auto-map` | Auto-assign colors to unmapped images by filename/label pattern matching |
 
-Options: `--product-id`, `--all`, `--dry-run`, `--source` (`mango` / `simples` / `both`).
+Options: `--product-id`, `--all`, `--dry-run`, `--clean` (remove existing configurable images before consolidating).
 
 ---
 
@@ -284,7 +295,8 @@ Rollpix_ConfigurableGallery/
 │   ├── acl.xml
 │   ├── adminhtml/
 │   │   ├── di.xml
-│   │   └── system.xml
+│   │   ├── system.xml
+│   │   └── events.xml
 │   └── frontend/
 │       └── di.xml
 ├── Setup/Patch/Data/
@@ -304,6 +316,8 @@ Rollpix_ConfigurableGallery/
 │       ├── PropagationMode.php
 │       ├── ImageRoles.php
 │       └── GalleryAdapter.php
+├── Observer/
+│   └── ProductSaveAfterObserver.php
 ├── Plugin/
 │   ├── AddAssociatedAttributesToGallery.php
 │   ├── AdminGallerySavePlugin.php
@@ -324,7 +338,8 @@ Rollpix_ConfigurableGallery/
 ├── Console/Command/
 │   ├── DiagnoseCommand.php
 │   ├── PropagateCommand.php
-│   └── MigrateCommand.php
+│   ├── MigrateCommand.php
+│   └── CleanCommand.php
 ├── view/
 │   ├── adminhtml/
 │   │   ├── layout/catalog_product_edit.xml
@@ -385,6 +400,52 @@ When the module is globally disabled, all behaviour falls back to stock Magento 
 ---
 
 ## Changelog
+
+### v1.0.35
+- Remove unused `--source` option from migrate command
+- Update documentation (README, CLAUDE.md)
+
+### v1.0.34
+- New: `--clean` flag for `rollpix:gallery:migrate --mode=consolidate` &mdash; removes existing configurable parent images before consolidating
+
+### v1.0.33
+- Fix: migrate consolidate dedup &mdash; dedup by color (first child per color) instead of file path, avoids Magento `_1`/`_2` suffix duplicates
+
+### v1.0.32
+- New: `bin/magento rollpix:gallery:clean` CLI command to remove all images from simple children
+
+### v1.0.31
+- New: automatic propagation on product save via `catalog_product_save_after` observer (when propagation mode = automatic)
+- Remove diagnostic logs from CartItemImagePlugin
+
+### v1.0.30
+- Fix: cart image override rewritten to hook `ItemProductResolver::getFinalProduct()` &mdash; works in cart page, mini-cart, and checkout (Luma & Hyva)
+- Previous approach on `DefaultItem::getItemData()` only affected KO.js mini-cart section
+
+### v1.0.29
+- Fix: move cart plugin target from `AbstractItem` to `DefaultItem` (frontend-only)
+
+### v1.0.28
+- Fix: change cart plugin logging from `debug()` to `info()` for system.log visibility
+
+### v1.0.27
+- Perf: only reload simple product via ProductRepository when color attribute is missing
+
+### v1.0.26
+- Fix: reload configurable product for cart image color mapping + debug logs
+
+### v1.0.25
+- Fix: reload simple product in cart plugin when EAV attributes not loaded
+
+### v1.0.24
+- Fix: cart image override &mdash; remove propagation gate, add simple product fallback strategy
+
+### v1.0.23
+- Admin color dropdown filtering by product's actual color options
+- Scroll to top on color swatch change
+
+### v1.0.16 &ndash; v1.0.22
+- Iterative improvements to gallery filtering, PLP compatibility, and admin UI
 
 ### v1.0.15
 - Fix: deselection now respects stock filter (gallery shows only in-stock color images)
