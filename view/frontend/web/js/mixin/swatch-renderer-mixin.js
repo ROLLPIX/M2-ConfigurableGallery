@@ -260,6 +260,7 @@ define([
 
             /**
              * Handle swatch selection change for Rollpix gallery.
+             * Only processes when we have color-to-media mappings.
              */
             _handleRollpixSwatchChange: function ($swatch) {
                 // Try lazy init if not yet initialized
@@ -267,7 +268,8 @@ define([
                     this._initRollpixGallery();
                 }
 
-                if (!this._rollpixSwitcher) {
+                // Skip if no switcher or no color mappings — let native behavior handle it
+                if (!this._isRollpixHandlingGallery()) {
                     return;
                 }
 
@@ -303,13 +305,21 @@ define([
 
             /**
              * Check if Rollpix is handling gallery updates.
-             * Returns true once the switcher is initialized — our module is the
-             * sole controller of gallery images from that point forward, even
-             * when no specific color is selected (deselection still filters
-             * through colorMapping which respects stock filtering).
+             * Only returns true when:
+             *   1. The switcher is initialized, AND
+             *   2. There are actual color-to-media mappings (availableColors non-empty)
+             *
+             * When availableColors is empty (images not associated with colors
+             * via associated_attributes), the module steps aside and lets the
+             * native Magento behavior run (loading simple product images on
+             * swatch selection).
              */
             _isRollpixHandlingGallery: function () {
-                return this._rollpixInitialized && this._rollpixSwitcher;
+                if (!this._rollpixInitialized || !this._rollpixSwitcher) {
+                    return false;
+                }
+                var config = this._getRollpixConfig();
+                return config && config.availableColors && config.availableColors.length > 0;
             },
 
             /**
