@@ -260,9 +260,10 @@ class MigrateCommand extends Command
         );
         $galleryValueTable = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery_value');
 
-        // Collect unique images per color from children
+        // Collect images per color from children — only from the FIRST child of each color
+        // (other children of the same color have duplicate copies with _1, _2 suffixes)
         $imagesByColor = [];
-        $seenPaths = [];
+        $seenColors = [];
 
         foreach ($children as $child) {
             $colorValue = $child->getData($colorAttributeCode);
@@ -271,6 +272,11 @@ class MigrateCommand extends Command
             }
             $optionId = (int) $colorValue;
 
+            // Skip if we already collected images for this color from another child
+            if (isset($seenColors[$optionId])) {
+                continue;
+            }
+
             $select = $connection->select()
                 ->from(['mg' => $galleryTable], ['value_id', 'value', 'media_type'])
                 ->join(['mgvte' => $toEntityTable], 'mg.value_id = mgvte.value_id', [])
@@ -278,15 +284,9 @@ class MigrateCommand extends Command
 
             $childImages = $connection->fetchAll($select);
 
-            foreach ($childImages as $image) {
-                $path = $image['value'];
-                if (isset($seenPaths[$path])) {
-                    continue;
-                }
-                $seenPaths[$path] = true;
-
-                $imagesByColor[$optionId] ??= [];
-                $imagesByColor[$optionId][] = $image;
+            if (!empty($childImages)) {
+                $seenColors[$optionId] = true;
+                $imagesByColor[$optionId] = $childImages;
             }
         }
 
