@@ -7,8 +7,10 @@
  * use closure-private state. This adapter therefore works by showing/hiding
  * DOM elements using a CSS class.
  *
- * Index-based matching: window.rollpixGalleryImages[i] corresponds to the
- * i-th .rp-gallery-item in the DOM (both iterate the same media collection).
+ * Matching: the GallerySwitcher filters from the same galleryImages array,
+ * so filtered results are the exact same JS objects (reference equality).
+ * We find each filtered image's index in the full array to map to DOM items.
+ * Fallback: value_id matching. Safety: never hides ALL items.
  *
  * Layout support:
  *   - vertical/grid/fashion: show/hide items + thumbnails via CSS class
@@ -62,10 +64,16 @@ define([
         /**
          * Update the Rollpix Product Gallery to show only filtered images.
          *
-         * Uses index-based matching: window.rollpixGalleryImages[i] corresponds
-         * to the i-th .rp-gallery-item in the DOM.
+         * Matching strategy: the GallerySwitcher filters from the same
+         * window.rollpixGalleryImages array, so filtered images are the exact
+         * same JS objects (reference equality). We find each filtered image's
+         * index in the full array, then show/hide DOM items by that index.
          *
-         * @param {Array} images - Filtered gallery images (with value_id)
+         * Fallback: if reference matching finds nothing, tries value_id matching.
+         * Safety: if neither strategy finds any visible items, aborts to prevent
+         * hiding the entire gallery.
+         *
+         * @param {Array} images - Filtered gallery images
          * @param {boolean} isInitial - Whether this is the initial page load
          */
         _updateGallery: function (images, isInitial) {
@@ -91,12 +99,40 @@ define([
                 return;
             }
 
-            // Build set of value_ids that should be visible
-            var visibleValueIds = {};
+            // Strategy 1: Reference-based matching (most robust).
+            // The filtered images are the same JS objects from the galleryImages
+            // array, so === comparison finds their index in the full array.
+            var visibleSet = {};
             for (var i = 0; i < images.length; i++) {
-                var vid = images[i].value_id || images[i].valueId;
-                if (vid !== undefined && vid !== null) {
-                    visibleValueIds[String(vid)] = true;
+                for (var j = 0; j < allImages.length; j++) {
+                    if (images[i] === allImages[j]) {
+                        visibleSet[j] = true;
+                        break;
+                    }
+                }
+            }
+
+            // Strategy 2: If reference matching found nothing, try value_id
+            var matchCount = 0;
+            for (var k in visibleSet) {
+                if (visibleSet.hasOwnProperty(k)) {
+                    matchCount++;
+                }
+            }
+            if (matchCount === 0 && images.length > 0) {
+                var visibleValueIds = {};
+                for (var vi = 0; vi < images.length; vi++) {
+                    var vid = images[vi].value_id || images[vi].valueId;
+                    if (vid !== undefined && vid !== null) {
+                        visibleValueIds[String(vid)] = true;
+                    }
+                }
+                for (var ai = 0; ai < allImages.length; ai++) {
+                    var itemVid = allImages[ai].value_id || allImages[ai].valueId;
+                    if (itemVid !== undefined && itemVid !== null
+                        && visibleValueIds[String(itemVid)]) {
+                        visibleSet[ai] = true;
+                    }
                 }
             }
 
@@ -105,14 +141,7 @@ define([
             var visibleIndexes = [];
 
             $items.each(function (idx) {
-                var imgData = allImages[idx];
-                if (!imgData) {
-                    return;
-                }
-
-                var itemVid = imgData.value_id || imgData.valueId;
-                var isVisible = (itemVid !== undefined && itemVid !== null
-                    && visibleValueIds[String(itemVid)]);
+                var isVisible = !!visibleSet[idx];
 
                 $(this).toggleClass(HIDDEN_CLASS, !isVisible);
                 if (isVisible) {
@@ -124,6 +153,13 @@ define([
                     $thumbs.eq(idx).toggleClass(HIDDEN_CLASS, !isVisible);
                 }
             });
+
+            // Safety: never hide ALL items — abort and restore if that would happen
+            if (visibleIndexes.length === 0 && $items.length > 0) {
+                $items.removeClass(HIDDEN_CLASS);
+                $thumbs.removeClass(HIDDEN_CLASS);
+                return;
+            }
 
             // Layout-specific state management
             if (this._isSlider) {
