@@ -109,6 +109,8 @@ bin/magento setup:upgrade
 
 Edit a configurable product in the admin. In the **Images and Videos** panel each media entry shows a color dropdown. Select the color option each image belongs to, or leave as "All Colors" for generic/brand images.
 
+**Auto-detection from filename:** When uploading images whose filenames contain a color name, the module automatically assigns the color. For example, `rojo_frente.jpg` is assigned to "Rojo", `campera_azul_marino.jpg` to "Azul Marino". Auto-detected assignments are highlighted in yellow so you can verify and correct if needed. Supports Spanish accents, compound colors, and partial matches.
+
 The module works automatically on **all configurable products** that have at least one matching selector attribute. No per-product toggle is needed.
 
 ### 2. Color preselection
@@ -400,6 +402,9 @@ When the module is globally disabled, all behaviour falls back to stock Magento 
 ---
 
 ## Changelog
+
+### v1.0.36
+- New: auto-detect color from filename on image upload in admin (yellow indicator for auto-detected assignments)
 
 ### v1.0.35
 - Remove unused `--source` option from migrate command

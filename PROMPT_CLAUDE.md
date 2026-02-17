@@ -162,6 +162,7 @@ Archivos a crear en orden:
 
 **Criterios:**
 - Dropdown de color funcional en admin por cada imagen y video.
+- Auto-detección de color por filename al subir imágenes (JS en `gallery-color-mapping.js`): normaliza filename, matchea contra labels de colores del producto (longest-first para colores compuestos), indicador visual amarillo para auto-detectados.
 - Mapping se persiste correctamente en `associated_attributes`.
 - JSON de producto contiene `associatedAttributes`, `rollpixGalleryConfig` con `defaultColorOptionId` y mapping de videos.
 - Cart muestra imagen del color elegido (sin propagación).
