@@ -136,7 +136,7 @@
                        showInDefault="1" showInWebsite="1" showInStore="1">
                     <label>Imagen por Color en Carrito</label>
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
-                    <comment>Mostrar la imagen del color seleccionado en carrito y checkout (solo cuando propagación está desactivada).</comment>
+                    <comment>Mostrar la imagen del color seleccionado en carrito y checkout. Usa el mapping de colores del padre o la imagen del producto simple como fallback.</comment>
                 </field>
             </group>
 

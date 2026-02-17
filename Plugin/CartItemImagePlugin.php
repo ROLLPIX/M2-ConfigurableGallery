@@ -16,7 +16,9 @@ use Rollpix\ConfigurableGallery\Model\Config;
 
 /**
  * Overrides cart item thumbnail with the image of the selected color (PRD §6.9).
- * Only active when propagation_mode = disabled (simples don't have their own images).
+ *
+ * Strategy 1: Color-specific image from parent's associated_attributes mapping.
+ * Strategy 2: Simple product's own base image (fallback when no color mapping).
  *
  * sortOrder=10: base plugin for cart item image.
  */
@@ -47,11 +49,6 @@ class CartItemImagePlugin
         }
 
         if (!$this->config->isCartImageOverrideEnabled()) {
-            return $result;
-        }
-
-        // Only when propagation is disabled — with propagation, simples have their own images
-        if (!$this->config->isPropagationDisabled()) {
             return $result;
         }
 
@@ -123,19 +120,22 @@ class CartItemImagePlugin
         $mediaMapping = $this->colorMapping->getColorMediaMapping($configurableProduct);
         $colorKey = (string) $colorOptionId;
 
-        if (!isset($mediaMapping[$colorKey]) || empty($mediaMapping[$colorKey]['images'])) {
-            return null;
+        // Strategy 1: color-specific image from parent's associated_attributes mapping
+        if (isset($mediaMapping[$colorKey]) && !empty($mediaMapping[$colorKey]['images'])) {
+            $firstImage = $mediaMapping[$colorKey]['images'][0];
+            $file = $firstImage['file'] ?? null;
+
+            if ($file !== null) {
+                return '/media/catalog/product' . $file;
+            }
         }
 
-        // Return the first image (main image) for this color
-        $firstImage = $mediaMapping[$colorKey]['images'][0];
-        $file = $firstImage['file'] ?? null;
-
-        if ($file === null) {
-            return null;
+        // Strategy 2: simple product's own base image
+        $simpleImage = $simpleProduct->getImage();
+        if ($simpleImage && $simpleImage !== 'no_selection') {
+            return '/media/catalog/product' . $simpleImage;
         }
 
-        // Build catalog product image URL
-        return '/media/catalog/product' . $file;
+        return null;
     }
 }
