@@ -255,6 +255,132 @@ class Propagation
     }
 
     /**
+     * Remove ALL images from simple children of a configurable product.
+     *
+     * @param Product $product Configurable product
+     * @param bool $dryRun If true, only report what would be done
+     * @return array Report of actions taken
+     */
+    public function cleanChildren(Product $product, bool $dryRun = false): array
+    {
+        $report = [
+            'product_id' => (int) $product->getId(),
+            'sku' => $product->getSku(),
+            'actions' => [],
+            'errors' => [],
+            'dry_run' => $dryRun,
+        ];
+
+        if ($product->getTypeId() !== Configurable::TYPE_CODE) {
+            $report['errors'][] = 'Product is not configurable';
+            return $report;
+        }
+
+        /** @var Configurable $typeInstance */
+        $typeInstance = $product->getTypeInstance();
+        $children = $typeInstance->getUsedProducts($product);
+
+        foreach ($children as $child) {
+            try {
+                $count = $this->removeAllImages($child, $dryRun);
+                if ($count > 0) {
+                    $report['actions'][] = sprintf(
+                        '%s child %s (ID %d): %d images',
+                        $dryRun ? 'WOULD CLEAN' : 'CLEANED',
+                        $child->getSku(),
+                        $child->getId(),
+                        $count
+                    );
+                } else {
+                    $report['actions'][] = sprintf(
+                        'SKIP child %s (ID %d): no images',
+                        $child->getSku(),
+                        $child->getId()
+                    );
+                }
+            } catch (\Exception $e) {
+                $report['errors'][] = sprintf(
+                    'ERROR cleaning child %s: %s',
+                    $child->getSku(),
+                    $e->getMessage()
+                );
+            }
+        }
+
+        return $report;
+    }
+
+    /**
+     * Remove ALL gallery images from a product via direct DB delete.
+     *
+     * @return int Number of images removed
+     */
+    private function removeAllImages(Product $product, bool $dryRun = false): int
+    {
+        $connection = $this->resourceConnection->getConnection();
+        $toEntityTable = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery_value_to_entity');
+        $galleryValueTable = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery_value');
+
+        $entityId = (int) $product->getId();
+
+        // Count images linked to this product
+        $count = (int) $connection->fetchOne(
+            $connection->select()
+                ->from($toEntityTable, ['cnt' => new \Zend_Db_Expr('COUNT(*)')])
+                ->where('entity_id = ?', $entityId)
+        );
+
+        if ($count === 0 || $dryRun) {
+            return $count;
+        }
+
+        // Remove value rows (store-specific data)
+        $connection->delete($galleryValueTable, ['entity_id = ?' => $entityId]);
+
+        // Remove entity linkage
+        $connection->delete($toEntityTable, ['entity_id = ?' => $entityId]);
+
+        // Reset image role attributes to 'no_selection'
+        $this->resetImageRoles($product);
+
+        return $count;
+    }
+
+    /**
+     * Reset image/small_image/thumbnail attributes to 'no_selection'.
+     */
+    private function resetImageRoles(Product $product): void
+    {
+        $connection = $this->resourceConnection->getConnection();
+        $varcharTable = $this->resourceConnection->getTableName('catalog_product_entity_varchar');
+        $entityId = (int) $product->getId();
+
+        $roleAttributeIds = [];
+        foreach (['image', 'small_image', 'thumbnail'] as $roleCode) {
+            $attrId = (int) $connection->fetchOne(
+                $connection->select()
+                    ->from($this->resourceConnection->getTableName('eav_attribute'), ['attribute_id'])
+                    ->where('attribute_code = ?', $roleCode)
+                    ->where('entity_type_id = ?', 4)
+            );
+            if ($attrId > 0) {
+                $roleAttributeIds[] = $attrId;
+            }
+        }
+
+        if (!empty($roleAttributeIds)) {
+            $connection->update(
+                $varcharTable,
+                ['value' => 'no_selection'],
+                [
+                    'entity_id = ?' => $entityId,
+                    'attribute_id IN (?)' => $roleAttributeIds,
+                ]
+            );
+        }
+    }
+
+    /**
      * Remove previously propagated images from a child product.
      *
      * @return int Number of images removed

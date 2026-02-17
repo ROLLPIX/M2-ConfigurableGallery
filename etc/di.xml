@@ -51,6 +51,9 @@
                 <item name="rollpix_gallery_migrate" xsi:type="object">
                     Rollpix\ConfigurableGallery\Console\Command\MigrateCommand\Proxy
                 </item>
+                <item name="rollpix_gallery_clean" xsi:type="object">
+                    Rollpix\ConfigurableGallery\Console\Command\CleanCommand\Proxy
+                </item>
             </argument>
         </arguments>
     </type>
