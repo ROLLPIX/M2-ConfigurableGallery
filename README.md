@@ -59,16 +59,17 @@ bin/magento setup:upgrade
 
 ## Configuration
 
-**Stores &gt; Configuration &gt; Rollpix &gt; Configurable Gallery**
+**Stores &gt; Configuration &gt; Rollpix &gt; Galeria Configurable**
 
 ### General
 
 | Field | Default | Description |
 |---|---|---|
 | Enable Module | Yes | Global on/off switch |
-| Color Attribute | `color` | Visual attribute used for mapping (swatch_visual or swatch_text) |
+| Selector Attributes | `color` | Priority-ordered list of swatch attributes used for image mapping. The module uses the first attribute that matches the product's super attributes (variants). |
 | Show Generic Images | Yes | Display untagged images alongside the selected color's images |
-| Preselect Color | Yes | Automatically select a color on page load |
+| Preselect Variant (PDP) | Yes | Automatically select the first in-stock color on the product detail page |
+| Preselect Variant (PLP) | Yes | Automatically select the first in-stock color on category listing pages |
 | Deep Link by Color | Yes | Allow `#color=318` or `?color=rojo` URL parameters |
 | Update URL on Select | Yes | Update the URL hash when a swatch is clicked |
 
@@ -76,8 +77,8 @@ bin/magento setup:upgrade
 
 | Field | Default | Description |
 |---|---|---|
-| Filter by Stock | No | Hide/dim colors that have no salable simples |
-| Out-of-Stock Behavior | Hide | `hide` removes images; `dim` adds a CSS class |
+| Filter by Stock | Yes | Hide/dim colors that have no salable simples |
+| Out-of-Stock Behavior | Hide | `hide` removes images from the gallery; `dim` adds a CSS class |
 
 ### Propagation
 
@@ -104,26 +105,24 @@ bin/magento setup:upgrade
 
 ## Usage
 
-### 1. Enable per product
+### 1. Map images to colors
 
-Edit a configurable product in the admin and set the **Rollpix Gallery Enabled** attribute to **Yes**.
+Edit a configurable product in the admin. In the **Images and Videos** panel each media entry shows a color dropdown. Select the color option each image belongs to, or leave as "All Colors" for generic/brand images.
 
-### 2. Map images to colors
+The module works automatically on **all configurable products** that have at least one matching selector attribute. No per-product toggle is needed.
 
-In the product's **Images and Videos** panel each media entry shows a color dropdown. Select the color option each image belongs to, or leave as "All Colors" for generic/brand images.
+### 2. Color preselection
 
-### 3. Set a default color (optional)
+When the page loads, the module automatically selects a color and filters the gallery. The priority order is:
 
-Set the **Rollpix Default Color** attribute to a specific color option. If left empty the module auto-selects the first color with stock.
+1. **URL parameter** &mdash; `#color=318` or `?color=rojo`
+2. **First color with stock** &mdash; when stock filter is enabled
+3. **First color by position** &mdash; fallback when stock filter is disabled
+4. **First visible swatch (DOM)** &mdash; leverages Magento's native stock validation for swatch visibility
 
-### Color preselection priority
+When the user deselects a swatch, the gallery shows images from all in-stock colors (respecting the stock filter), not all images.
 
-1. URL parameter (`#color=318` or `?color=rojo`)
-2. Manual default (`rollpix_default_color` attribute)
-3. First color with stock (when stock filter is enabled)
-4. First color by position order
-
-### Deep linking
+### 3. Deep linking
 
 Share URLs with a pre-selected color:
 
@@ -173,7 +172,7 @@ bin/magento rollpix:gallery:diagnose --product-id=123
 bin/magento rollpix:gallery:diagnose --all
 ```
 
-Reports global config, catalog statistics, color mapping status, stock status, and potential issues per product.
+Reports global config, catalog statistics, color mapping status, stock status, and potential issues per product. Scans all configurable products (no per-product opt-in required).
 
 ### Propagate
 
@@ -213,6 +212,8 @@ Options: `--product-id`, `--all`, `--dry-run`, `--source` (`mango` / `simples` /
 │  Layer 1: Backend (gallery-agnostic)        │
 │  - DB column associated_attributes          │
 │  - Admin UI (color dropdown per image)      │
+│  - AttributeResolver (dynamic attribute     │
+│    detection per product)                   │
 │  - ColorMapping / ColorPreselect / Config   │
 │  - StockFilter (MSI + legacy fallback)      │
 │  - Propagation engine                       │
@@ -226,9 +227,21 @@ Options: `--product-id`, `--all`, `--dry-run`, `--source` (`mango` / `simples` /
 │  - adapter/fotorama.js (jQuery)             │
 │  - adapter/rollpix-gallery.js (jQuery)      │
 │  - adapter/amasty.js (jQuery)               │
+│  - swatch-renderer-mixin.js (intercepts     │
+│    native swatch events, blocks native      │
+│    gallery updates when module is active)   │
 │  - HyvaCompat/ (Alpine.js)                  │
 └─────────────────────────────────────────────┘
 ```
+
+### Frontend initialization flow
+
+1. `gallery_data.phtml` outputs `window.rollpixGalleryConfig` (color mapping, stock data, config) and `window.rollpixGalleryImages` (enriched gallery images with `value_id` and `associatedAttributes`).
+2. The swatch-renderer mixin creates a `GallerySwitcher` and `FotoramaAdapter`, then calls `init()` which resolves the default color and dispatches the first filter event.
+3. `_ensureGalleryFiltered()` uses two strategies to guarantee the filter is applied:
+   - **`gallery:loaded` event** &mdash; re-applies the filter after Magento resets Fotorama.
+   - **Polling** &mdash; detects Fotorama readiness in case `gallery:loaded` already fired before the mixin loaded (RequireJS timing).
+4. Once initialized, the mixin blocks all native gallery updates (`updateBaseImage`, `_processUpdateGallery`) so the module is the sole gallery controller.
 
 ### Key conventions
 
@@ -238,6 +251,7 @@ Options: `--product-id`, `--all`, `--dry-run`, `--source` (`mango` / `simples` /
 - **Conditional PLP plugins** &mdash; registered always, guarded by `ModuleManager::isEnabled()`.
 - **Strict types** &mdash; `declare(strict_types=1)` in every PHP file.
 - **Constructor promotion** &mdash; `readonly` promoted properties throughout.
+- **No per-product gate** &mdash; the module is active for all configurable products when globally enabled.
 
 ### Database
 
@@ -247,12 +261,12 @@ One column added to `catalog_product_entity_media_gallery_value`:
 |---|---|---|
 | `associated_attributes` | TEXT, nullable | `attribute{ID}-{OPTION_ID}` (e.g. `attribute92-318`) |
 
-Two EAV attributes created via data patches:
+Two legacy EAV attributes (created by earlier data patches, now hidden from admin via `HideGalleryProductAttributes`):
 
-| Attribute | Type | Scope | Apply to |
-|---|---|---|---|
-| `rollpix_gallery_enabled` | boolean | Store | configurable |
-| `rollpix_default_color` | int (nullable) | Store | configurable |
+| Attribute | Status | Notes |
+|---|---|---|
+| `rollpix_gallery_enabled` | Hidden | No longer used; module is always active for all configurables |
+| `rollpix_default_color` | Hidden | No longer used; preselection is automatic based on stock and position |
 
 ---
 
@@ -275,9 +289,11 @@ Rollpix_ConfigurableGallery/
 │       └── di.xml
 ├── Setup/Patch/Data/
 │   ├── AddGalleryEnabledAttribute.php
-│   └── AddDefaultColorAttribute.php
+│   ├── AddDefaultColorAttribute.php
+│   └── HideGalleryProductAttributes.php
 ├── Model/
 │   ├── Config.php
+│   ├── AttributeResolver.php
 │   ├── ColorMapping.php
 │   ├── ColorPreselect.php
 │   ├── StockFilter.php
@@ -297,8 +313,11 @@ Rollpix_ConfigurableGallery/
 │       ├── SwatchImagePlugin.php
 │       ├── HoverSliderCompatPlugin.php
 │       └── ImageFlipCompatPlugin.php
-├── Block/Adminhtml/Product/Gallery/
-│   └── ColorMapping.php
+├── Block/Adminhtml/
+│   ├── Product/Gallery/
+│   │   └── ColorMapping.php
+│   └── System/Config/
+│       └── ModuleInfo.php
 ├── ViewModel/
 │   ├── GalleryData.php
 │   └── PlpGalleryData.php
@@ -361,7 +380,51 @@ Rollpix_ConfigurableGallery/
 | Amasty_Conf | Amasty Color Swatches Pro adapter |
 | Hyva_Theme | Alpine.js adapter (HyvaCompat sub-module) |
 
-When a product has `rollpix_gallery_enabled = 0` or the module is globally disabled, all behaviour falls back to stock Magento with zero overhead.
+When the module is globally disabled, all behaviour falls back to stock Magento with zero overhead.
+
+---
+
+## Changelog
+
+### v1.0.15
+- Fix: deselection now respects stock filter (gallery shows only in-stock color images)
+- `_isRollpixHandlingGallery` blocks native gallery updates from initialization onward
+
+### v1.0.14
+- Fix: robust gallery preselection using polling + `gallery:loaded` event
+- New: DOM-based swatch detection leveraging Magento's native stock validation
+
+### v1.0.13
+- Fix: stock filter default changed to enabled
+- Fix: re-apply preselection after `gallery:loaded` event
+
+### v1.0.12
+- Fix: block native `updateBaseImage` / `_processUpdateGallery` when Rollpix filter is active
+- Support swatch deselection (toggle off)
+
+### v1.0.11
+- Fix: gallery filtering &mdash; inject enriched images into page via `window.rollpixGalleryImages`
+- Lazy initialization with retry logic for RequireJS timing
+
+### v1.0.10
+- Refactor: remove per-product `rollpix_gallery_enabled` gate &mdash; module active on all configurables
+- Replace `preselect_color` with separate PDP/PLP preselection settings
+- Hide legacy EAV attributes from admin form
+
+### v1.0.9
+- Fix: frontend gallery filtering and stock filter
+
+### v1.0.8
+- Fix: color mapping persistence &mdash; inject data via uiRegistry form source
+
+### v1.0.7
+- Fix: thumbnail color dropdown opens correctly (stopPropagation fix)
+
+### v1.0.6
+- Compact color dropdown on thumbnails, remove badges
+
+### v1.0.5
+- Dynamic attribute resolver &mdash; priority-based selector attributes
 
 ---
 
