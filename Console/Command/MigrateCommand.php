@@ -33,6 +33,7 @@ class MigrateCommand extends Command
     private const OPTION_ALL = 'all';
     private const OPTION_DRY_RUN = 'dry-run';
     private const OPTION_SOURCE = 'source';
+    private const OPTION_CLEAN = 'clean';
 
     public function __construct(
         private readonly Config $config,
@@ -80,6 +81,12 @@ class MigrateCommand extends Command
                 InputOption::VALUE_OPTIONAL,
                 'Fuente de datos: mango | simples | both',
                 'both'
+            )
+            ->addOption(
+                self::OPTION_CLEAN,
+                null,
+                InputOption::VALUE_NONE,
+                'Eliminar imágenes existentes del configurable antes de consolidar'
             );
     }
 
@@ -96,6 +103,7 @@ class MigrateCommand extends Command
         $all = $input->getOption(self::OPTION_ALL);
         $dryRun = $input->getOption(self::OPTION_DRY_RUN);
         $source = $input->getOption(self::OPTION_SOURCE);
+        $clean = $input->getOption(self::OPTION_CLEAN);
 
         if (!in_array($mode, ['diagnose', 'consolidate', 'auto-map'], true)) {
             $output->writeln('<error>Modo inválido. Use: diagnose, consolidate, o auto-map</error>');
@@ -130,7 +138,7 @@ class MigrateCommand extends Command
         foreach ($collection as $product) {
             match ($mode) {
                 'diagnose' => $this->modeDiagnose($product, $output),
-                'consolidate' => $this->modeConsolidate($product, $source, $dryRun, $output),
+                'consolidate' => $this->modeConsolidate($product, $source, $dryRun, $clean, $output),
                 'auto-map' => $this->modeAutoMap($product, $dryRun, $output),
             };
         }
@@ -233,6 +241,7 @@ class MigrateCommand extends Command
         Product $product,
         string $source,
         bool $dryRun,
+        bool $clean,
         OutputInterface $output
     ): void {
         $output->writeln(sprintf(
@@ -259,6 +268,34 @@ class MigrateCommand extends Command
             'catalog_product_entity_media_gallery_value_to_entity'
         );
         $galleryValueTable = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery_value');
+
+        // Clean existing images from configurable parent if requested
+        if ($clean) {
+            $entityId = (int) $product->getId();
+            $existingCount = (int) $connection->fetchOne(
+                $connection->select()
+                    ->from($toEntityTable, ['cnt' => new \Zend_Db_Expr('COUNT(*)')])
+                    ->where('entity_id = ?', $entityId)
+            );
+
+            if ($existingCount > 0) {
+                if ($dryRun) {
+                    $output->writeln(sprintf(
+                        '  WOULD CLEAN: %d imágenes existentes del configurable',
+                        $existingCount
+                    ));
+                } else {
+                    $connection->delete($galleryValueTable, ['entity_id = ?' => $entityId]);
+                    $connection->delete($toEntityTable, ['entity_id = ?' => $entityId]);
+                    $output->writeln(sprintf(
+                        '  <info>CLEANED: %d imágenes eliminadas del configurable</info>',
+                        $existingCount
+                    ));
+                }
+            } else {
+                $output->writeln('  No hay imágenes existentes en el configurable para limpiar');
+            }
+        }
 
         // Collect images per color from children — only from the FIRST child of each color
         // (other children of the same color have duplicate copies with _1, _2 suffixes)
