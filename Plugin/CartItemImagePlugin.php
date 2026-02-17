@@ -44,6 +44,13 @@ class CartItemImagePlugin
      */
     public function afterGetItemData(AbstractItem $subject, array $result, QuoteItem $item): array
     {
+        $this->logger->info('Rollpix ConfigurableGallery: Cart plugin called', [
+            'item_id' => $item->getId(),
+            'product_type' => $item->getProductType(),
+            'enabled' => $this->config->isEnabled(),
+            'cart_override' => $this->config->isCartImageOverrideEnabled(),
+        ]);
+
         if (!$this->config->isEnabled()) {
             return $result;
         }
@@ -54,6 +61,11 @@ class CartItemImagePlugin
 
         try {
             $colorImage = $this->getColorImageForCartItem($item);
+            $this->logger->info('Rollpix ConfigurableGallery: Cart image result', [
+                'item_id' => $item->getId(),
+                'color_image' => $colorImage,
+                'original_src' => $result['product_image']['src'] ?? 'N/A',
+            ]);
             if ($colorImage !== null) {
                 $result['product_image']['src'] = $colorImage;
             }
@@ -102,7 +114,7 @@ class CartItemImagePlugin
         // Resolve the selector attribute — only needs product ID + type instance (no EAV reload)
         $colorAttributeCode = $this->attributeResolver->resolveForProduct($configurableProduct);
         if ($colorAttributeCode === null) {
-            $this->logger->debug('Rollpix ConfigurableGallery: Cart image — no selector attribute', [
+            $this->logger->info('Rollpix ConfigurableGallery: Cart image — no selector attribute', [
                 'configurable_id' => $configurableProduct->getId(),
             ]);
             return null;
@@ -115,7 +127,7 @@ class CartItemImagePlugin
             $colorOptionId = $simpleProduct->getData($colorAttributeCode);
         }
         if ($colorOptionId === null) {
-            $this->logger->debug('Rollpix ConfigurableGallery: Cart image — no color value on simple', [
+            $this->logger->info('Rollpix ConfigurableGallery: Cart image — no color value on simple', [
                 'simple_id' => $simpleProduct->getId(),
                 'attribute' => $colorAttributeCode,
             ]);
@@ -128,7 +140,7 @@ class CartItemImagePlugin
         $mediaMapping = $this->colorMapping->getColorMediaMapping($configurableProduct);
         $colorKey = (string) $colorOptionId;
 
-        $this->logger->debug('Rollpix ConfigurableGallery: Cart image mapping lookup', [
+        $this->logger->info('Rollpix ConfigurableGallery: Cart image mapping lookup', [
             'configurable_id' => $configurableProduct->getId(),
             'simple_id' => $simpleProduct->getId(),
             'color_attribute' => $colorAttributeCode,
