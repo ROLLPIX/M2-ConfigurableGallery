@@ -45,6 +45,114 @@ define([
             return 'attribute' + colorAttributeId + '-' + optionValue;
         }
 
+        // ── Auto-detect color from filename ───────────────────────────
+
+        /**
+         * Normalize a string for color matching.
+         * Lowercase, strip extension, replace accents, normalize separators.
+         */
+        function normalizeForMatching(str) {
+            if (!str) {
+                return '';
+            }
+
+            var normalized = str.toLowerCase().trim();
+
+            // Remove file extension
+            normalized = normalized.replace(/\.\w{2,4}$/, '');
+
+            // Replace accented characters (Spanish)
+            var accentMap = {
+                '\u00e1': 'a', '\u00e9': 'e', '\u00ed': 'i', '\u00f3': 'o', '\u00fa': 'u',
+                '\u00f1': 'n', '\u00fc': 'u',
+                '\u00c1': 'a', '\u00c9': 'e', '\u00cd': 'i', '\u00d3': 'o', '\u00da': 'u',
+                '\u00d1': 'n', '\u00dc': 'u'
+            };
+
+            normalized = normalized.replace(
+                /[\u00e1\u00e9\u00ed\u00f3\u00fa\u00f1\u00fc\u00c1\u00c9\u00cd\u00d3\u00da\u00d1\u00dc]/g,
+                function (c) { return accentMap[c] || c; }
+            );
+
+            // Normalize separators (hyphens, underscores, dots, spaces) → single space
+            normalized = normalized.replace(/[-_.\s]+/g, ' ').trim();
+
+            return normalized;
+        }
+
+        // Build color patterns for auto-detection, sorted longest-first
+        // so compound colors ("azul marino") match before single words ("azul")
+        var colorPatterns = [];
+
+        colorOptions.forEach(function (opt) {
+            if (opt.value === '') {
+                return;
+            }
+
+            var attrVal = 'attribute' + colorAttributeId + '-' + opt.value;
+            var normalizedLabel = normalizeForMatching(opt.label);
+
+            if (normalizedLabel) {
+                colorPatterns.push({
+                    pattern: normalizedLabel,
+                    attributeValue: attrVal,
+                    label: opt.label
+                });
+            }
+        });
+
+        colorPatterns.sort(function (a, b) {
+            return b.pattern.length - a.pattern.length;
+        });
+
+        /**
+         * Auto-detect color from image filename/label.
+         * Returns attributeValue string or null.
+         */
+        function autoDetectColor(imgData) {
+            if (!imgData || colorPatterns.length === 0) {
+                return null;
+            }
+
+            // Extract filename: file → name → url fallback
+            var rawName = '';
+
+            if (imgData.file) {
+                rawName = imgData.file.split('/').pop();
+            } else if (imgData.name) {
+                rawName = imgData.name;
+            } else if (imgData.url) {
+                rawName = imgData.url.split('/').pop().split('?')[0];
+            }
+
+            if (!rawName) {
+                return null;
+            }
+
+            var normalizedFilename = normalizeForMatching(rawName);
+
+            if (!normalizedFilename) {
+                return null;
+            }
+
+            var normalizedLabel = normalizeForMatching(imgData.label || '');
+
+            // Iterate patterns (longest first) for substring match
+            for (var i = 0; i < colorPatterns.length; i++) {
+                var cp = colorPatterns[i];
+
+                if (normalizedFilename.indexOf(cp.pattern) !== -1) {
+                    return cp.attributeValue;
+                }
+
+                if (normalizedLabel && normalizedLabel.indexOf(cp.pattern) !== -1) {
+                    return cp.attributeValue;
+                }
+            }
+
+            return null;
+        }
+
         // ── Form data injection (Magento 2 UI Component form) ────────
 
         /**
@@ -151,8 +259,25 @@ define([
 
             var vid = String(imgData.value_id);
             var currentValue = imgData.associated_attributes || existingMapping[vid] || '';
+            var wasAutoDetected = false;
+
+            // Auto-detect color from filename for images with no existing assignment
+            if (!currentValue) {
+                var detectedColor = autoDetectColor(imgData);
+
+                if (detectedColor) {
+                    applyColorChange(vid, detectedColor);
+                    currentValue = detectedColor;
+                    wasAutoDetected = true;
+                }
+            }
 
             var $select = buildThumbnailSelect(vid, currentValue);
+
+            if (wasAutoDetected) {
+                $select.addClass('rollpix-auto-detected');
+            }
+
             $imageEl.append($select);
 
             // Stop event propagation so the dropdown works inside Magento's sortable gallery
@@ -162,6 +287,7 @@ define([
 
             $select.on('change', function (e) {
                 e.stopPropagation();
+                $(this).removeClass('rollpix-auto-detected');
                 applyColorChange(vid, $(this).val());
             });
         }
