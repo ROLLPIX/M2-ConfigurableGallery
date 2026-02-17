@@ -8,13 +8,15 @@
  * When a color swatch is selected:
  * 1. Asks gallery-switcher for filtered images
  * 2. The switcher dispatches rollpix:gallery:filter event
- * 3. The Fotorama adapter picks up the event and updates the gallery
+ * 3. The active adapter (Fotorama or Rollpix Gallery) picks up the event
+ *    and updates the gallery
  */
 define([
     'jquery',
     'Rollpix_ConfigurableGallery/js/gallery-switcher',
-    'Rollpix_ConfigurableGallery/js/adapter/fotorama'
-], function ($, GallerySwitcher, FotoramaAdapter) {
+    'Rollpix_ConfigurableGallery/js/adapter/fotorama',
+    'Rollpix_ConfigurableGallery/js/adapter/rollpix-gallery'
+], function ($, GallerySwitcher, FotoramaAdapter, RollpixGalleryAdapter) {
     'use strict';
 
     return function (SwatchRenderer) {
@@ -74,7 +76,15 @@ define([
                 }
 
                 this._rollpixSwitcher = new GallerySwitcher(rollpixConfig, galleryImages);
-                this._rollpixAdapter = new FotoramaAdapter(this._rollpixSwitcher);
+
+                // Select adapter based on galleryAdapter config (auto-detected by backend)
+                var adapterType = rollpixConfig.galleryAdapter || 'fotorama';
+                if (adapterType === 'rollpix') {
+                    this._rollpixAdapter = new RollpixGalleryAdapter(this._rollpixSwitcher);
+                } else {
+                    this._rollpixAdapter = new FotoramaAdapter(this._rollpixSwitcher);
+                }
+
                 this._rollpixSwitcher.init();
                 this._rollpixInitialized = true;
 
@@ -86,22 +96,79 @@ define([
             },
 
             /**
-             * Ensure the preselected color filter is applied once Fotorama is ready.
-             * Uses two strategies to handle all timing scenarios:
+             * Ensure the preselected color filter is applied once the gallery is ready.
+             * Dispatches to adapter-specific detection strategies.
+             */
+            _ensureGalleryFiltered: function () {
+                if (!this._rollpixSwitcher) {
+                    return;
+                }
+
+                var rollpixConfig = this._getRollpixConfig();
+                var adapterType = rollpixConfig ? rollpixConfig.galleryAdapter : 'fotorama';
+
+                if (adapterType === 'rollpix') {
+                    this._ensureRollpixGalleryFiltered();
+                } else {
+                    this._ensureFotoramaFiltered();
+                }
+            },
+
+            /**
+             * Rollpix Product Gallery: poll until gallery items exist in DOM.
+             * No gallery:loaded event — Rollpix Gallery inits via data-mage-init.
+             */
+            _ensureRollpixGalleryFiltered: function () {
+                var self = this;
+                var attempts = 0;
+                var maxAttempts = 25;
+
+                var reapply = function () {
+                    var currentColor = self._rollpixSwitcher.getCurrentColor();
+
+                    if (currentColor === null) {
+                        currentColor = self._getFirstVisibleColorOptionId();
+                        if (currentColor !== null) {
+                            self._rollpixSwitcher.switchColor(currentColor, true);
+                            return true;
+                        }
+                        return false;
+                    }
+
+                    self._rollpixSwitcher.switchColor(currentColor, true);
+                    return true;
+                };
+
+                var poll = function () {
+                    attempts++;
+                    var $rpGallery = $('[data-role="rp-gallery"]');
+                    if ($rpGallery.length && $rpGallery.find('.rp-gallery-item').length > 0) {
+                        reapply();
+                        return;
+                    }
+                    if (attempts < maxAttempts) {
+                        setTimeout(poll, 200);
+                    }
+                };
+                setTimeout(poll, 200);
+            },
+
+            /**
+             * Fotorama: uses gallery:loaded event + polling for Fotorama instance.
+             * Two strategies handle all timing scenarios:
              * 1. gallery:loaded event — for future resets after our binding
              * 2. Polling — catches the case where gallery:loaded already fired
              */
-            _ensureGalleryFiltered: function () {
+            _ensureFotoramaFiltered: function () {
                 var self = this;
                 var $gallery = $('[data-gallery-role="gallery-placeholder"]');
-                if (!$gallery.length || !this._rollpixSwitcher) {
+                if (!$gallery.length) {
                     return;
                 }
 
                 var reapply = function () {
                     var currentColor = self._rollpixSwitcher.getCurrentColor();
 
-                    // If no preselection from config, detect first visible swatch
                     if (currentColor === null) {
                         currentColor = self._getFirstVisibleColorOptionId();
                         if (currentColor !== null) {

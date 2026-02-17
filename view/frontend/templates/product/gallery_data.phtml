@@ -17,7 +17,11 @@ $galleryConfigJson = $galleryDataViewModel->getGalleryConfigJson();
 // Get enriched gallery images from the gallery block (includes value_id and associatedAttributes
 // injected by EnrichGalleryJson plugin). This makes them available to the swatch-renderer mixin
 // before Fotorama initializes, solving the timing issue.
-$galleryBlock = $block->getLayout()->getBlock('product.info.media.image');
+// When Rollpix_ProductGallery is installed, product.info.media.image is removed;
+// fallback to the Rollpix gallery block (same Magento\Catalog\Block\Product\View\Gallery class,
+// so the EnrichGalleryJson plugin fires on it too).
+$galleryBlock = $block->getLayout()->getBlock('product.info.media.image')
+    ?: $block->getLayout()->getBlock('rollpix.product.gallery.vertical');
 $galleryImagesJson = $galleryBlock ? $galleryBlock->getGalleryImagesJson() : '[]';
 ?>
 
