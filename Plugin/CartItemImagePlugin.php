@@ -99,15 +99,7 @@ class CartItemImagePlugin
             return null;
         }
 
-        // Reload both products via repository to ensure full EAV data is available
-        $configurableProduct = $this->productRepository->getById(
-            (int) $configurableProduct->getId()
-        );
-        $simpleProduct = $this->productRepository->getById(
-            (int) $simpleProduct->getId()
-        );
-
-        // Resolve the selector attribute for this configurable product
+        // Resolve the selector attribute — only needs product ID + type instance (no EAV reload)
         $colorAttributeCode = $this->attributeResolver->resolveForProduct($configurableProduct);
         if ($colorAttributeCode === null) {
             $this->logger->debug('Rollpix ConfigurableGallery: Cart image — no selector attribute', [
@@ -116,7 +108,12 @@ class CartItemImagePlugin
             return null;
         }
 
+        // Quote item products may not have EAV attributes loaded — reload only if needed
         $colorOptionId = $simpleProduct->getData($colorAttributeCode);
+        if ($colorOptionId === null) {
+            $simpleProduct = $this->productRepository->getById((int) $simpleProduct->getId());
+            $colorOptionId = $simpleProduct->getData($colorAttributeCode);
+        }
         if ($colorOptionId === null) {
             $this->logger->debug('Rollpix ConfigurableGallery: Cart image — no color value on simple', [
                 'simple_id' => $simpleProduct->getId(),
