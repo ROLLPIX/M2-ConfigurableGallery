@@ -49,7 +49,9 @@ define([
             }
         }
 
-        // Listen for swatch clicks on PLP
+        // Listen for swatch clicks on PLP.
+        // Deferred with setTimeout so our update runs AFTER Magento's native
+        // swatch-renderer handler, which would otherwise overwrite our changes.
         $(document).on('click', '.swatch-option', function () {
             var $swatch = $(this);
             var $swatchAttr = $swatch.closest('.swatch-attribute');
@@ -84,7 +86,9 @@ define([
                 allImages = allImages.concat(productConfig.genericImages);
             }
 
-            updateHoverSlider($productItem, allImages);
+            setTimeout(function () {
+                updateHoverSlider($productItem, allImages);
+            }, 100);
         });
     };
 });

@@ -1,8 +1,13 @@
 <?php
 /**
- * Template that injects rollpixPlpConfig JSON into category/listing pages (PRD §8.8).
+ * Template that injects rollpixPlpConfig JSON into listing pages (PRD §8.8).
  * Provides color→image mapping data for PLP swatch changes, HoverSlider,
  * and ImageFlipHover compatibility scripts.
+ *
+ * Discovers product list blocks in priority order:
+ *   1. category.products.list (category pages)
+ *   2. search_result_list (search results)
+ *   3. Any ListProduct or CatalogWidget ProductsList block (Page Builder, widgets)
  *
  * @var \Rollpix\ConfigurableGallery\ViewModel\PlpGalleryData $plpViewModel
  * @var \Magento\Framework\View\Element\Template $block
@@ -13,15 +18,34 @@ if (!$plpViewModel || !$plpViewModel->isEnabled()) {
     return;
 }
 
-// Get products from the product list block
+// Try known block names first
 $productListBlock = $block->getLayout()->getBlock('category.products.list')
     ?? $block->getLayout()->getBlock('search_result_list');
+
+// Fallback: search for any product list block (covers Page Builder widgets, custom blocks)
+if (!$productListBlock) {
+    foreach ($block->getLayout()->getAllBlocks() as $layoutBlock) {
+        if ($layoutBlock instanceof \Magento\Catalog\Block\Product\ListProduct
+            || $layoutBlock instanceof \Magento\CatalogWidget\Block\Product\ProductsList
+        ) {
+            $productListBlock = $layoutBlock;
+            break;
+        }
+    }
+}
 
 if (!$productListBlock) {
     return;
 }
 
-$productCollection = $productListBlock->getLoadedProductCollection();
+// Get products from the discovered block
+$productCollection = null;
+if (method_exists($productListBlock, 'getLoadedProductCollection')) {
+    $productCollection = $productListBlock->getLoadedProductCollection();
+} elseif (method_exists($productListBlock, 'getProductCollection')) {
+    $productCollection = $productListBlock->getProductCollection();
+}
+
 if (!$productCollection) {
     return;
 }

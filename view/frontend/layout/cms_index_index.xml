@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!--
+    Injects PLP gallery data (rollpixPlpConfig) into the CMS homepage.
+    Covers Page Builder product widgets placed on the homepage.
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <body>
+        <referenceContainer name="content">
+            <block class="Magento\Framework\View\Element\Template"
+                   name="rollpix.configurable.gallery.plp.data.home"
+                   template="Rollpix_ConfigurableGallery::product/plp_gallery_data.phtml"
+                   after="-">
+                <arguments>
+                    <argument name="plp_gallery_data_view_model" xsi:type="object">
+                        Rollpix\ConfigurableGallery\ViewModel\PlpGalleryData
+                    </argument>
+                </arguments>
+            </block>
+        </referenceContainer>
+    </body>
+</page>

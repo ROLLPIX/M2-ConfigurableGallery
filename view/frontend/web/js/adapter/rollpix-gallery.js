@@ -382,6 +382,7 @@ define([
             if (allVisible) {
                 // No filtering — restore arrows and let slider manage state
                 $gallery.find('.rp-slider-prev, .rp-slider-next').removeClass(HIDDEN_CLASS);
+                $gallery.off('.rpCgFilter');
                 // Trigger first thumbnail click to reset slider internal state
                 if ($thumbs.length > 0) {
                     $thumbs.eq(0).trigger('click');
@@ -411,11 +412,58 @@ define([
                 if (firstIdx < $thumbs.length) {
                     $thumbs.eq(firstIdx).addClass('rp-thumbnail-active');
                 }
+
+                // Sync slider internal state by clicking the first visible thumbnail.
+                // Without this, mobile swipe navigates to hidden slides (blank images).
+                if (firstIdx < $thumbs.length) {
+                    $thumbs.eq(firstIdx).trigger('click');
+                } else if (firstIdx < $dots.length) {
+                    $dots.eq(firstIdx).trigger('click');
+                }
             }
 
             // Hide arrows when filtering is active — arrow navigation uses
             // currentIndex±1 which could land on a hidden item
             $gallery.find('.rp-slider-prev, .rp-slider-next').addClass(HIDDEN_CLASS);
+
+            // Swipe guard: after touch interaction on mobile, the slider may navigate
+            // to a hidden slide. Detect this and redirect to the nearest visible slide.
+            var self = this;
+            $gallery.off('.rpCgFilter').on('touchend.rpCgFilter', function () {
+                setTimeout(function () {
+                    self._ensureVisibleSlide($items, $dots, $thumbs, visibleIndexes);
+                }, 350);
+            });
+        },
+
+        /**
+         * After a swipe, check if the slider landed on a hidden slide
+         * and redirect to the nearest visible one.
+         */
+        _ensureVisibleSlide: function ($items, $dots, $thumbs, visibleIndexes) {
+            if (!visibleIndexes.length) {
+                return;
+            }
+
+            // Find which item the slider is currently showing
+            // (the slider sets inline display:block on the active item)
+            var foundVisible = false;
+            $items.each(function () {
+                if (this.style.display === 'block' && !$(this).hasClass(HIDDEN_CLASS)) {
+                    foundVisible = true;
+                    return false;
+                }
+            });
+
+            if (!foundVisible) {
+                // Slider is on a hidden slide — navigate to first visible
+                var target = visibleIndexes[0];
+                if (target < $dots.length) {
+                    $dots.eq(target).trigger('click');
+                } else if (target < $thumbs.length) {
+                    $thumbs.eq(target).trigger('click');
+                }
+            }
         },
 
         /**

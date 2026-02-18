@@ -45,7 +45,9 @@ define([
             }
         }
 
-        // Listen for swatch clicks on PLP
+        // Listen for swatch clicks on PLP.
+        // Deferred with setTimeout so our update runs AFTER Magento's native
+        // swatch-renderer handler, which would otherwise overwrite our changes.
         $(document).on('click', '.swatch-option', function () {
             var $swatch = $(this);
             var $swatchAttr = $swatch.closest('.swatch-attribute');
@@ -74,7 +76,9 @@ define([
                 return;
             }
 
-            updateFlipImage($productItem, colorData.flipImage);
+            setTimeout(function () {
+                updateFlipImage($productItem, colorData.flipImage);
+            }, 100);
         });
     };
 });

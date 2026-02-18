@@ -65,7 +65,9 @@ define([
             }
         }
 
-        // Listen for swatch clicks on PLP
+        // Listen for swatch clicks on PLP.
+        // Deferred with setTimeout so our update runs AFTER Magento's native
+        // swatch-renderer handler, which would otherwise overwrite our image.
         $(document).on('click', '.swatch-option', function () {
             var $swatch = $(this);
             var $swatchAttr = $swatch.closest('.swatch-attribute');
@@ -85,7 +87,9 @@ define([
 
             var optionId = $swatch.attr('data-option-id') || $swatch.attr('option-id');
             if (optionId) {
-                updateProductImage(productId, optionId);
+                setTimeout(function () {
+                    updateProductImage(productId, optionId);
+                }, 100);
             }
         });
     };
