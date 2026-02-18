@@ -8,7 +8,9 @@ use Magento\Catalog\Model\Product;
 use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
 use Magento\Framework\App\RequestInterface;
 use Magento\Framework\App\ResourceConnection;
+use Normalizer;
 use Psr\Log\LoggerInterface;
+use Rollpix\ConfigurableGallery\Model\AttributeResolver;
 use Rollpix\ConfigurableGallery\Model\Config;
 use Rollpix\ConfigurableGallery\Model\Propagation;
 
@@ -28,6 +30,7 @@ class AdminGallerySavePlugin
     public function __construct(
         private readonly Config $config,
         private readonly Propagation $propagation,
+        private readonly AttributeResolver $attributeResolver,
         private readonly ResourceConnection $resourceConnection,
         private readonly RequestInterface $request,
         private readonly LoggerInterface $logger
@@ -117,51 +120,18 @@ class AdminGallerySavePlugin
             }
         }
 
-        // Fallback: for new images, rollpix_color_mapping keys use temp hash value_ids
-        // that don't match the real DB value_ids assigned during Product::save().
-        // Use the file-path-based mapping to look up real value_ids from the DB.
-        $fileMappingData = $this->request->getParam('rollpix_color_mapping_by_file');
-        if (is_array($fileMappingData) && !empty($fileMappingData)) {
-            $galleryTable = $this->resourceConnection->getTableName(
-                'catalog_product_entity_media_gallery'
+        // Server-side auto-detect: for images that still have no associated_attributes
+        // in the DB, detect color from filename. This is the reliable fallback that
+        // doesn't depend on JS data transmission or temp-hash-to-real-ID matching.
+        if ($result->getTypeId() === Configurable::TYPE_CODE) {
+            $autoDetected = $this->autoDetectColorForNewImages(
+                $result,
+                $connection,
+                $tableName,
+                $handledValueIds
             );
-            $toEntityTable = $this->resourceConnection->getTableName(
-                'catalog_product_entity_media_gallery_value_to_entity'
-            );
-
-            // Query DB for real value_id → file path mapping for this product
-            $dbFilePairs = $connection->fetchPairs(
-                $connection->select()
-                    ->from(['g' => $galleryTable], ['value_id', 'value'])
-                    ->join(['te' => $toEntityTable], 'g.value_id = te.value_id', [])
-                    ->where('te.entity_id = ?', (int) $result->getId())
-            );
-
-            foreach ($fileMappingData as $filePath => $associatedAttributes) {
-                // Find the real DB value_id for this file path
-                $realValueId = array_search($filePath, $dbFilePairs, true);
-                if ($realValueId === false) {
-                    continue;
-                }
-                $realValueId = (int) $realValueId;
-
-                if (in_array($realValueId, $handledValueIds, true)) {
-                    continue;
-                }
-
-                if ($associatedAttributes === '' || $associatedAttributes === '0') {
-                    $associatedAttributes = null;
-                }
-
-                $rowsAffected = $connection->update(
-                    $tableName,
-                    ['associated_attributes' => $associatedAttributes],
-                    ['value_id = ?' => $realValueId]
-                );
-
-                if ($rowsAffected > 0) {
-                    $galleryChanged = true;
-                }
+            if ($autoDetected > 0) {
+                $galleryChanged = true;
             }
         }
 
@@ -171,7 +141,7 @@ class AdminGallerySavePlugin
                 'image_count' => count($mediaGallery['images']),
                 'gallery_changed' => $galleryChanged,
                 'handled_by_value_id' => count($handledValueIds),
-                'file_mapping_keys' => is_array($fileMappingData) ? array_keys($fileMappingData) : 'none',
+                'auto_detected' => $autoDetected ?? 0,
             ]);
         }
 
@@ -181,6 +151,160 @@ class AdminGallerySavePlugin
         }
 
         return $result;
+    }
+
+    /**
+     * Server-side auto-detect color from filename for images without associated_attributes.
+     *
+     * Same logic as the JS auto-detect in gallery-color-mapping.js, but running in PHP
+     * with access to real DB value_ids. This bypasses all temp-hash matching issues.
+     *
+     * @param Product $product
+     * @param \Magento\Framework\DB\Adapter\AdapterInterface $connection
+     * @param string $valueTable The catalog_product_entity_media_gallery_value table name
+     * @param int[] $handledValueIds Value IDs already handled (user explicitly set/cleared)
+     * @return int Number of images auto-detected
+     */
+    private function autoDetectColorForNewImages(
+        Product $product,
+        $connection,
+        string $valueTable,
+        array $handledValueIds
+    ): int {
+        $storeId = $product->getStoreId();
+
+        $attributeCode = $this->attributeResolver->resolveForProduct($product, $storeId);
+        if ($attributeCode === null) {
+            return 0;
+        }
+
+        $attributeId = $this->attributeResolver->getAttributeIdByCode($attributeCode);
+        if ($attributeId === null) {
+            return 0;
+        }
+
+        // Get all options for this color attribute
+        $optionTable = $this->resourceConnection->getTableName('eav_attribute_option');
+        $optionValueTable = $this->resourceConnection->getTableName('eav_attribute_option_value');
+        $colorOptions = $connection->fetchPairs(
+            $connection->select()
+                ->from(['eao' => $optionTable], ['option_id'])
+                ->join(
+                    ['eaov' => $optionValueTable],
+                    'eao.option_id = eaov.option_id AND eaov.store_id = 0',
+                    ['value']
+                )
+                ->where('eao.attribute_id = ?', $attributeId)
+        );
+
+        if (empty($colorOptions)) {
+            return 0;
+        }
+
+        // Build normalized patterns sorted longest-first (so "azul marino" matches before "azul")
+        $patterns = [];
+        foreach ($colorOptions as $optionId => $label) {
+            $normalized = $this->normalizeForMatching($label);
+            if ($normalized !== '') {
+                $patterns[] = [
+                    'normalized' => $normalized,
+                    'optionId' => (int) $optionId,
+                ];
+            }
+        }
+        usort($patterns, fn($a, $b) => strlen($b['normalized']) - strlen($a['normalized']));
+
+        if (empty($patterns)) {
+            return 0;
+        }
+
+        // Find images of this product that still have no associated_attributes in the DB
+        $galleryTable = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery');
+        $toEntityTable = $this->resourceConnection->getTableName(
+            'catalog_product_entity_media_gallery_value_to_entity'
+        );
+
+        // Subquery: value_ids that already have a non-empty associated_attributes
+        $assignedSubSelect = $connection->select()
+            ->from($valueTable, ['value_id'])
+            ->where('associated_attributes IS NOT NULL')
+            ->where("associated_attributes != ''");
+
+        $select = $connection->select()
+            ->from(['g' => $galleryTable], ['value_id', 'value'])
+            ->join(['te' => $toEntityTable], 'g.value_id = te.value_id', [])
+            ->where('te.entity_id = ?', (int) $product->getId())
+            ->where('g.value_id NOT IN (?)', $assignedSubSelect);
+
+        // Exclude value_ids explicitly handled by the user (e.g. manually cleared to "no color")
+        if (!empty($handledValueIds)) {
+            $select->where('g.value_id NOT IN (?)', $handledValueIds);
+        }
+
+        $unassigned = $connection->fetchPairs($select);
+
+        if (empty($unassigned)) {
+            return 0;
+        }
+
+        $count = 0;
+        foreach ($unassigned as $valueId => $filePath) {
+            $filename = basename((string) $filePath);
+            $normalizedFilename = $this->normalizeForMatching($filename);
+            if ($normalizedFilename === '') {
+                continue;
+            }
+
+            foreach ($patterns as $p) {
+                if (str_contains($normalizedFilename, $p['normalized'])) {
+                    $attrValue = 'attribute' . $attributeId . '-' . $p['optionId'];
+                    $connection->update(
+                        $valueTable,
+                        ['associated_attributes' => $attrValue],
+                        ['value_id = ?' => (int) $valueId]
+                    );
+                    $count++;
+                    break;
+                }
+            }
+        }
+
+        if ($count > 0 && $this->config->isDebugMode()) {
+            $this->logger->debug('Rollpix ConfigurableGallery: Auto-detected color from filename', [
+                'product_id' => $product->getId(),
+                'unassigned_count' => count($unassigned),
+                'auto_detected_count' => $count,
+            ]);
+        }
+
+        return $count;
+    }
+
+    /**
+     * Normalize a string for color matching (mirrors JS normalizeForMatching).
+     *
+     * Lowercase, strip file extension, remove diacritical marks, normalize separators.
+     */
+    private function normalizeForMatching(string $str): string
+    {
+        if ($str === '') {
+            return '';
+        }
+
+        $normalized = mb_strtolower(trim($str));
+
+        // Remove file extension
+        $normalized = preg_replace('/\.\w{2,4}$/', '', $normalized);
+
+        // Strip diacritical marks: NFD decompose then remove combining marks
+        // Same as JS: normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        $normalized = Normalizer::normalize($normalized, Normalizer::FORM_D);
+        $normalized = preg_replace('/[\x{0300}-\x{036f}]/u', '', $normalized);
+
+        // Normalize separators (hyphens, underscores, dots, spaces) to single space
+        $normalized = preg_replace('/[-_.\s]+/', ' ', $normalized);
+
+        return trim($normalized);
     }
 
     /**
