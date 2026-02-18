@@ -6,6 +6,18 @@
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
 
+    <!-- SEO-friendly color URL router (sortOrder=25, before default at 30) -->
+    <type name="Magento\Framework\App\RouterList">
+        <arguments>
+            <argument name="routerList" xsi:type="array">
+                <item name="rollpix_color_seo" xsi:type="array">
+                    <item name="class" xsi:type="string">Rollpix\ConfigurableGallery\Router\ColorRouter</item>
+                    <item name="sortOrder" xsi:type="string">25</item>
+                </item>
+            </argument>
+        </arguments>
+    </type>
+
     <!--
         PLP: Change product thumbnail when swatch is selected.
         sortOrder=10: base PLP swatch plugin.

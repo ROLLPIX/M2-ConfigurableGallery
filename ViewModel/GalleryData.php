@@ -6,15 +6,19 @@ namespace Rollpix\ConfigurableGallery\ViewModel;
 
 use Magento\Catalog\Model\Product;
 use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
+use Magento\Framework\App\Config\ScopeConfigInterface;
+use Magento\Framework\App\RequestInterface;
 use Magento\Framework\Module\Manager as ModuleManager;
 use Magento\Framework\Registry;
 use Magento\Framework\Serialize\Serializer\Json as JsonSerializer;
 use Magento\Framework\View\Element\Block\ArgumentInterface;
+use Magento\Store\Model\ScopeInterface;
 use Psr\Log\LoggerInterface;
 use Rollpix\ConfigurableGallery\Model\AttributeResolver;
 use Rollpix\ConfigurableGallery\Model\ColorMapping;
 use Rollpix\ConfigurableGallery\Model\ColorPreselect;
 use Rollpix\ConfigurableGallery\Model\Config;
+use Rollpix\ConfigurableGallery\Model\SlugGenerator;
 use Rollpix\ConfigurableGallery\Model\StockFilter;
 
 /**
@@ -32,7 +36,10 @@ class GalleryData implements ArgumentInterface
         private readonly StockFilter $stockFilter,
         private readonly ModuleManager $moduleManager,
         private readonly JsonSerializer $jsonSerializer,
-        private readonly LoggerInterface $logger
+        private readonly LoggerInterface $logger,
+        private readonly RequestInterface $request,
+        private readonly SlugGenerator $slugGenerator,
+        private readonly ScopeConfigInterface $scopeConfig
     ) {
     }
 
@@ -120,6 +127,29 @@ class GalleryData implements ArgumentInterface
             $colorsWithStock
         );
 
+        // SEO-friendly URL data
+        $seoFriendlyUrl = $this->config->isSeoFriendlyUrlEnabled($storeId);
+        $seoColorSlugMap = null;
+        $seoPreselectedColor = null;
+        $urlSuffix = '';
+
+        if ($seoFriendlyUrl) {
+            // Build slug map from color labels
+            $seoColorSlugMap = $this->slugGenerator->buildSlugMap($colorLabels);
+
+            // Check if router resolved a color from SEO URL
+            $seoOptionId = $this->request->getParam('rollpix_seo_color_option');
+            if ($seoOptionId !== null) {
+                $seoPreselectedColor = (int) $seoOptionId;
+            }
+
+            $urlSuffix = (string) $this->scopeConfig->getValue(
+                'catalog/seo/product_url_suffix',
+                ScopeInterface::SCOPE_STORE,
+                $storeId
+            );
+        }
+
         $galleryConfig = [
             'enabled' => true,
             'colorAttributeId' => $colorAttributeId,
@@ -131,6 +161,10 @@ class GalleryData implements ArgumentInterface
             'preselectColor' => $this->config->isPreselectVariantPdpEnabled($storeId),
             'deepLinkEnabled' => $this->config->isDeepLinkEnabled($storeId),
             'updateUrlOnSelect' => $this->config->isUpdateUrlOnSelectEnabled($storeId),
+            'seoFriendlyUrl' => $seoFriendlyUrl,
+            'seoColorSlugMap' => $seoColorSlugMap,
+            'seoPreselectedColor' => $seoPreselectedColor,
+            'urlSuffix' => $urlSuffix,
             'availableColors' => $availableColorIds,
             'colorsWithStock' => $colorsWithStock,
             'colorMapping' => $frontendColorMapping,

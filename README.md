@@ -72,6 +72,7 @@ bin/magento setup:upgrade
 | Preselect Variant (PLP) | Yes | Automatically select the first in-stock color on category listing pages |
 | Deep Link by Color | Yes | Allow `#color=318` or `?color=rojo` URL parameters |
 | Update URL on Select | Yes | Update the URL hash when a swatch is clicked |
+| SEO-friendly URL by Color | No | Clean URLs like `/product/color/rojo` instead of `?color=rojo`. Requires Deep Link enabled. |
 
 ### Stock
 
@@ -111,6 +112,8 @@ Edit a configurable product in the admin. In the **Images and Videos** panel eac
 
 **Auto-detection from filename:** When uploading images whose filenames contain a color name, the module automatically assigns the color. For example, `rojo_frente.jpg` is assigned to "Rojo", `campera_azul_marino.jpg` to "Azul Marino". Auto-detected assignments are highlighted in yellow so you can verify and correct if needed. Supports Spanish accents, compound colors, and partial matches.
 
+> **Note:** The color selector appears after saving the product. Newly uploaded images do not have a database ID yet, so the dropdown is injected once the product is saved and the page reloads.
+
 The module works automatically on **all configurable products** that have at least one matching selector attribute. No per-product toggle is needed.
 
 ### 2. Color preselection
@@ -133,6 +136,19 @@ Share URLs with a pre-selected color:
 /product-url#color=rojo         (by label, case-insensitive)
 /product-url?color=318          (query param for campaigns/emails)
 ```
+
+#### SEO-friendly URLs
+
+When enabled in **General &gt; URL SEO-friendly por Color**, the module generates clean, crawlable URLs:
+
+```
+/zapatillas-peak-mujer/color/marron
+/campera-outdoor/medida/grande
+```
+
+The attribute code segment is dynamic (uses the resolved selector attribute for each product). Labels are slugified with accent normalization (`Marrón` &rarr; `marron`, `Azul Marino` &rarr; `azul-marino`).
+
+A custom Magento router intercepts these paths, resolves the product via `url_rewrite`, and preselects the color. When the user clicks a swatch, the URL updates via `replaceState` to the new color path. Old `#color=` and `?color=` formats remain supported as fallback.
 
 ---
 
@@ -402,6 +418,20 @@ When the module is globally disabled, all behaviour falls back to stock Magento 
 ---
 
 ## Changelog
+
+### v1.0.38
+- New: SEO-friendly URLs for color deep links (`/product/color/rojo` instead of `?color=rojo` or `#color=318`)
+- Custom Magento router resolves `/product/{attr-code}/{slug}` paths to the product page with color preselected
+- Slugification with accent normalization (Marrón → marron, Azul Marino → azul-marino)
+- Works with dynamic attribute codes (color, medida, etc.), not hardcoded
+- Backward compatible: old `?color=` and `#color=` URLs still work
+- Toggleable per store via admin config (disabled by default)
+
+### v1.0.37
+- Fix: "clean before propagate" now removes ALL child images instead of relying on broken flag-based detection
+- Fix: remove broken `markAsPropagated()` that was overwriting image alt text with internal flag
+- Perf: auto-propagation only triggers when gallery actually changed (new/removed images or color mapping modifications)
+- Perf: child products are only saved when propagation actually added/removed images (avoids unnecessary indexer/cache invalidation)
 
 ### v1.0.36
 - New: auto-detect color from filename on image upload in admin (yellow indicator for auto-detected assignments)

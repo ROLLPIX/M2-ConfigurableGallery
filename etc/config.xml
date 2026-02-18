@@ -12,6 +12,7 @@
                 <preselect_variant_plp>1</preselect_variant_plp>
                 <deep_link_enabled>1</deep_link_enabled>
                 <update_url_on_select>1</update_url_on_select>
+                <seo_friendly_url>0</seo_friendly_url>
             </general>
             <stock>
                 <stock_filter_enabled>1</stock_filter_enabled>

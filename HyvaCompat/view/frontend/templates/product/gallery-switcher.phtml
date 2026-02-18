@@ -163,9 +163,27 @@ $galleryConfigJson = $galleryDataViewModel->getGalleryConfigJson();
             },
 
             getColorFromUrl() {
+                const availableColors = this.config.availableColors || [];
+
+                // Priority 0: SEO path preselection (resolved by PHP router)
+                if (this.config.seoPreselectedColor) {
+                    const preselected = parseInt(this.config.seoPreselectedColor);
+                    if (!isNaN(preselected) && availableColors.includes(preselected)) {
+                        return preselected;
+                    }
+                }
+
+                // Priority 1: SEO path detection from current URL
+                if (this.config.seoFriendlyUrl && this.config.seoColorSlugMap) {
+                    const pathColor = this.getColorFromSeoPath();
+                    if (pathColor !== null) {
+                        return pathColor;
+                    }
+                }
+
                 let colorParam = null;
 
-                // Try hash: #color=value
+                // Priority 2: hash — #color=value
                 const hash = window.location.hash;
                 if (hash) {
                     const hashMatch = hash.match(/[#&]color=([^&]*)/);
@@ -174,7 +192,7 @@ $galleryConfigJson = $galleryDataViewModel->getGalleryConfigJson();
                     }
                 }
 
-                // Try query: ?color=value
+                // Priority 3: query — ?color=value
                 if (!colorParam) {
                     const search = window.location.search;
                     if (search) {
@@ -191,27 +209,98 @@ $galleryConfigJson = $galleryDataViewModel->getGalleryConfigJson();
 
                 // Try numeric
                 const numericId = parseInt(colorParam);
-                const availableColors = this.config.availableColors || [];
                 if (!isNaN(numericId) && availableColors.includes(numericId)) {
                     return numericId;
                 }
 
-                // Try label match
+                // Try label match or slug match
                 const colorMapping = this.config.colorMapping || {};
                 const lowerParam = colorParam.toLowerCase();
+                const slugParam = this.slugify(colorParam);
                 for (const key in colorMapping) {
-                    if (key !== 'null' && colorMapping[key].label &&
-                        colorMapping[key].label.toLowerCase() === lowerParam) {
-                        return parseInt(key);
+                    if (key !== 'null' && colorMapping[key].label) {
+                        if (colorMapping[key].label.toLowerCase() === lowerParam ||
+                            this.slugify(colorMapping[key].label) === slugParam) {
+                            return parseInt(key);
+                        }
                     }
                 }
 
                 return null;
             },
 
+            getColorFromSeoPath() {
+                let path = window.location.pathname;
+                const suffix = this.config.urlSuffix || '';
+                const attrCode = this.config.colorAttributeCode || 'color';
+
+                if (suffix && path.endsWith(suffix)) {
+                    path = path.slice(0, -suffix.length);
+                }
+
+                const segments = path.split('/');
+                if (segments.length < 4) return null;
+
+                const slug = segments[segments.length - 1];
+                const pathAttr = segments[segments.length - 2];
+                if (pathAttr !== attrCode) return null;
+
+                const slugMap = this.config.seoColorSlugMap || {};
+                const availableColors = this.config.availableColors || [];
+                for (const optId in slugMap) {
+                    if (slugMap[optId] === slug) {
+                        const parsed = parseInt(optId);
+                        if (!isNaN(parsed) && availableColors.includes(parsed)) {
+                            return parsed;
+                        }
+                    }
+                }
+                return null;
+            },
+
+            getBaseProductPath() {
+                let path = window.location.pathname;
+                const suffix = this.config.urlSuffix || '';
+                const attrCode = this.config.colorAttributeCode || 'color';
+
+                if (suffix && path.endsWith(suffix)) {
+                    path = path.slice(0, -suffix.length);
+                }
+
+                const segments = path.split('/');
+                if (segments.length >= 4 && segments[segments.length - 2] === attrCode) {
+                    path = segments.slice(0, segments.length - 2).join('/');
+                }
+
+                return path;
+            },
+
+            slugify(str) {
+                if (!str) return '';
+                return str
+                    .toLowerCase()
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '')
+                    .replace(/[^a-z0-9]+/g, '-')
+                    .replace(/-+/g, '-')
+                    .replace(/^-|-$/g, '');
+            },
+
             updateUrlHash(optionId) {
                 if (!optionId) return;
                 try {
+                    if (this.config.seoFriendlyUrl && this.config.seoColorSlugMap) {
+                        const slug = this.config.seoColorSlugMap[optionId];
+                        if (slug) {
+                            const basePath = this.getBaseProductPath();
+                            const attrCode = this.config.colorAttributeCode || 'color';
+                            const suffix = this.config.urlSuffix || '';
+                            const newPath = basePath + '/' + attrCode + '/' + slug + suffix;
+                            window.history.replaceState(null, '', newPath + window.location.search);
+                            return;
+                        }
+                    }
+
                     const url = window.location.pathname + window.location.search + '#color=' + optionId;
                     window.history.replaceState(null, '', url);
                 } catch (e) {

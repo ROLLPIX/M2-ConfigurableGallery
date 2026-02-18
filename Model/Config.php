@@ -23,6 +23,7 @@ class Config
     private const XML_PATH_PRESELECT_VARIANT_PLP = self::XML_PATH_PREFIX . 'general/preselect_variant_plp';
     private const XML_PATH_DEEP_LINK_ENABLED = self::XML_PATH_PREFIX . 'general/deep_link_enabled';
     private const XML_PATH_UPDATE_URL_ON_SELECT = self::XML_PATH_PREFIX . 'general/update_url_on_select';
+    private const XML_PATH_SEO_FRIENDLY_URL = self::XML_PATH_PREFIX . 'general/seo_friendly_url';
 
     // §9.2 Stock
     private const XML_PATH_STOCK_FILTER_ENABLED = self::XML_PATH_PREFIX . 'stock/stock_filter_enabled';
@@ -114,6 +115,15 @@ class Config
     {
         return $this->scopeConfig->isSetFlag(
             self::XML_PATH_UPDATE_URL_ON_SELECT,
+            ScopeInterface::SCOPE_STORE,
+            $storeId
+        );
+    }
+
+    public function isSeoFriendlyUrlEnabled(int|string|null $storeId = null): bool
+    {
+        return $this->scopeConfig->isSetFlag(
+            self::XML_PATH_SEO_FRIENDLY_URL,
             ScopeInterface::SCOPE_STORE,
             $storeId
         );

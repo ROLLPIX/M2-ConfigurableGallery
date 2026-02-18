@@ -69,6 +69,16 @@
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
                     <comment>Actualizar URL hash al seleccionar un swatch (permite copiar/compartir URL con color).</comment>
                 </field>
+
+                <field id="seo_friendly_url" translate="label comment" type="select" sortOrder="65"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>URL SEO-friendly por Color</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Genera URLs limpias como /producto/color/rojo en lugar de ?color=rojo o #color=318. Requiere Deep Link habilitado.</comment>
+                    <depends>
+                        <field id="deep_link_enabled">1</field>
+                    </depends>
+                </field>
             </group>
 
             <!-- §9.2 Stock -->

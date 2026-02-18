@@ -236,7 +236,8 @@ define([], function () {
 
         /**
          * Resolve color from URL parameters.
-         * Supports: #color=318, #color=rojo, ?color=318, ?color=rojo
+         * Priority: SEO path → hash → query param
+         * Supports: /product/color/marron, #color=318, #color=rojo, ?color=318, ?color=rojo
          *
          * @returns {number|null} option_id or null
          */
@@ -245,9 +246,25 @@ define([], function () {
                 return null;
             }
 
+            // Priority 0: SEO path preselection (resolved by PHP router)
+            if (this.config.seoPreselectedColor) {
+                var preselected = parseInt(this.config.seoPreselectedColor, 10);
+                if (!isNaN(preselected) && this._inArray(preselected, this.availableColors)) {
+                    return preselected;
+                }
+            }
+
+            // Priority 1: SEO path detection from current URL
+            if (this.config.seoFriendlyUrl && this.config.seoColorSlugMap) {
+                var pathColor = this._getColorFromSeoPath();
+                if (pathColor !== null) {
+                    return pathColor;
+                }
+            }
+
             var colorParam = null;
 
-            // Try hash first: #color=value
+            // Priority 2: hash — #color=value
             var hash = window.location.hash;
             if (hash) {
                 var hashMatch = hash.match(/[#&]color=([^&]*)/);
@@ -256,7 +273,7 @@ define([], function () {
                 }
             }
 
-            // Try query param: ?color=value
+            // Priority 3: query param — ?color=value
             if (!colorParam) {
                 var search = window.location.search;
                 if (search) {
@@ -277,13 +294,17 @@ define([], function () {
                 return numericId;
             }
 
-            // Try as label (case-insensitive)
+            // Try as label (case-insensitive) or slug
             var lowerParam = colorParam.toLowerCase();
+            var slugParam = this._slugify(colorParam);
             for (var key in this.colorMapping) {
                 if (this.colorMapping.hasOwnProperty(key) && key !== 'null') {
                     var mapping = this.colorMapping[key];
-                    if (mapping.label && mapping.label.toLowerCase() === lowerParam) {
-                        return parseInt(key, 10);
+                    if (mapping.label) {
+                        if (mapping.label.toLowerCase() === lowerParam ||
+                            this._slugify(mapping.label) === slugParam) {
+                            return parseInt(key, 10);
+                        }
                     }
                 }
             }
@@ -360,13 +381,27 @@ define([], function () {
         },
 
         /**
-         * Update URL hash with color parameter.
+         * Update URL with color parameter.
+         * When SEO-friendly URLs enabled: path-based (/product/color/slug)
+         * Otherwise: hash-based (#color=optionId)
          */
         _updateUrlHash: function (optionId) {
             if (!optionId) {
                 return;
             }
             try {
+                if (this.config.seoFriendlyUrl && this.config.seoColorSlugMap) {
+                    var slug = this.config.seoColorSlugMap[optionId];
+                    if (slug) {
+                        var basePath = this._getBaseProductPath();
+                        var attrCode = this.colorAttributeCode;
+                        var suffix = this.config.urlSuffix || '';
+                        var newPath = basePath + '/' + attrCode + '/' + slug + suffix;
+                        window.history.replaceState(null, '', newPath + window.location.search);
+                        return;
+                    }
+                }
+
                 var newHash = 'color=' + optionId;
                 if (window.history && window.history.replaceState) {
                     var url = window.location.pathname + window.location.search + '#' + newHash;
@@ -409,6 +444,93 @@ define([], function () {
                 });
             }
             document.dispatchEvent(event);
+        },
+
+        /**
+         * Extract color option_id from SEO path (e.g. /product/color/marron).
+         * @returns {number|null}
+         */
+        _getColorFromSeoPath: function () {
+            var path = window.location.pathname;
+            var suffix = this.config.urlSuffix || '';
+
+            // Strip suffix
+            if (suffix && path.length > suffix.length &&
+                path.substring(path.length - suffix.length) === suffix) {
+                path = path.substring(0, path.length - suffix.length);
+            }
+
+            var segments = path.split('/');
+            // Need at least: ['', 'product-url', 'attr-code', 'slug']
+            if (segments.length < 4) {
+                return null;
+            }
+
+            var slug = segments[segments.length - 1];
+            var attrCode = segments[segments.length - 2];
+
+            if (attrCode !== this.colorAttributeCode) {
+                return null;
+            }
+
+            // Reverse-lookup slug in the slug map
+            var slugMap = this.config.seoColorSlugMap || {};
+            for (var optId in slugMap) {
+                if (slugMap.hasOwnProperty(optId) && slugMap[optId] === slug) {
+                    var parsed = parseInt(optId, 10);
+                    if (!isNaN(parsed) && this._inArray(parsed, this.availableColors)) {
+                        return parsed;
+                    }
+                }
+            }
+
+            return null;
+        },
+
+        /**
+         * Get the base product URL path (without color segments or suffix).
+         * @returns {string}
+         */
+        _getBaseProductPath: function () {
+            var path = window.location.pathname;
+            var suffix = this.config.urlSuffix || '';
+
+            // Strip suffix
+            if (suffix && path.length > suffix.length &&
+                path.substring(path.length - suffix.length) === suffix) {
+                path = path.substring(0, path.length - suffix.length);
+            }
+
+            // Strip /{attr-code}/{slug} if present
+            var segments = path.split('/');
+            if (segments.length >= 4) {
+                var maybeAttr = segments[segments.length - 2];
+                if (maybeAttr === this.colorAttributeCode) {
+                    segments = segments.slice(0, segments.length - 2);
+                    path = segments.join('/');
+                }
+            }
+
+            return path;
+        },
+
+        /**
+         * Slugify a string (must match PHP SlugGenerator::slugify).
+         * "Marrón" → "marron", "Azul Marino" → "azul-marino"
+         * @param {string} str
+         * @returns {string}
+         */
+        _slugify: function (str) {
+            if (!str) {
+                return '';
+            }
+            return str
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/-+/g, '-')
+                .replace(/^-|-$/g, '');
         },
 
         /**

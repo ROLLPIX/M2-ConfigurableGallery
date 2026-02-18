@@ -52,4 +52,6 @@
 "Habilita el filtro de galería por color para este producto configurable.","Habilita el filtro de galería por color para este producto configurable."
 "Color Default de Galería","Color Default de Galería"
 "Option ID del color a preseleccionar. Dejar vacío para auto-detección (primer color con stock).","Option ID del color a preseleccionar. Dejar vacío para auto-detección (primer color con stock)."
+"URL SEO-friendly por Color","URL SEO-friendly por Color"
+"Genera URLs limpias como /producto/color/rojo en lugar de ?color=rojo o #color=318. Requiere Deep Link habilitado.","Genera URLs limpias como /producto/color/rojo en lugar de ?color=rojo o #color=318. Requiere Deep Link habilitado."
 "Rollpix - Galería Configurable","Rollpix - Galería Configurable"
