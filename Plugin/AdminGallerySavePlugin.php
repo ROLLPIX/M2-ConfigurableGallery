@@ -73,6 +73,9 @@ class AdminGallerySavePlugin
         $connection = $this->resourceConnection->getConnection();
         $tableName = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery_value');
 
+        // Track which value_ids were explicitly handled via rollpix_color_mapping
+        $handledValueIds = [];
+
         // Only proceed with color mapping update if we have explicit data from the admin UI.
         // Without this check, every product save would wipe existing mappings.
         if (is_array($colorMappingData) && !empty($colorMappingData)) {
@@ -85,6 +88,8 @@ class AdminGallerySavePlugin
                 if (!isset($colorMappingData[$valueId])) {
                     continue;
                 }
+
+                $handledValueIds[] = (int) $valueId;
 
                 $associatedAttributes = $colorMappingData[$valueId];
                 if ($associatedAttributes === '' || $associatedAttributes === '0') {
@@ -99,6 +104,32 @@ class AdminGallerySavePlugin
                     ['value_id = ?' => (int) $valueId]
                 );
 
+                if ($rowsAffected > 0) {
+                    $galleryChanged = true;
+                }
+            }
+        }
+
+        // Fallback: for new images, the rollpix_color_mapping keys may use temp hashes
+        // that don't match the real value_ids assigned during Product::save().
+        // However, the image's own form data may contain the associated_attributes
+        // value (set by JS auto-detect from filename). Persist it as a fallback.
+        foreach ($mediaGallery['images'] as $image) {
+            $valueId = $image['value_id'] ?? null;
+            if ($valueId === null || !empty($image['removed'])) {
+                continue;
+            }
+            if (in_array((int) $valueId, $handledValueIds, true)) {
+                continue;
+            }
+
+            $formValue = $image['associated_attributes'] ?? null;
+            if ($formValue !== null && $formValue !== '' && $formValue !== '0') {
+                $rowsAffected = $connection->update(
+                    $tableName,
+                    ['associated_attributes' => $formValue],
+                    ['value_id = ?' => (int) $valueId]
+                );
                 if ($rowsAffected > 0) {
                     $galleryChanged = true;
                 }

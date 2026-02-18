@@ -44,6 +44,12 @@ define([], function () {
             var defaultColor = this._resolveDefaultColor();
             if (defaultColor !== null) {
                 this.switchColor(defaultColor, true);
+
+                // Pre-select the swatch in the UI if color came from URL
+                var urlColor = this.getColorFromUrl();
+                if (urlColor !== null) {
+                    this._preselectSwatch(urlColor);
+                }
             }
         },
 
@@ -59,6 +65,12 @@ define([], function () {
 
             if (isNaN(optionId)) {
                 optionId = null;
+            }
+
+            // Skip redundant processing when same color is re-selected (e.g. swatch click
+            // after programmatic preselection)
+            if (optionId === this.currentColorOptionId && !isInitial) {
+                return this.getFilteredImages(optionId);
             }
 
             this.currentColorOptionId = optionId;
@@ -533,6 +545,39 @@ define([], function () {
                 .replace(/[^a-z0-9]+/g, '-')
                 .replace(/-+/g, '-')
                 .replace(/^-|-$/g, '');
+        },
+
+        /**
+         * Programmatically click the swatch option to pre-select the variant.
+         * Polls the DOM until the swatch renders (swatches may load async).
+         */
+        _preselectSwatch: function (optionId) {
+            if (!optionId || !this.colorAttributeId) {
+                return;
+            }
+            var attrId = this.colorAttributeId;
+            var attempts = 0;
+            var maxAttempts = 50;
+
+            var tryClick = function () {
+                var container = document.querySelector(
+                    '.swatch-attribute[data-attribute-id="' + attrId + '"]'
+                );
+                if (container) {
+                    var option = container.querySelector(
+                        '.swatch-option[data-option-id="' + optionId + '"]'
+                    );
+                    if (option && !option.classList.contains('selected')) {
+                        option.click();
+                        return;
+                    }
+                }
+                attempts++;
+                if (attempts < maxAttempts) {
+                    setTimeout(tryClick, 100);
+                }
+            };
+            tryClick();
         },
 
         /**

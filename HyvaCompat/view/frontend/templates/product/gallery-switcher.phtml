@@ -47,6 +47,12 @@ $galleryConfigJson = $galleryDataViewModel->getGalleryConfigJson();
                 const defaultColor = this.resolveDefaultColor();
                 if (defaultColor !== null) {
                     this.switchColor(defaultColor, true);
+
+                    // Pre-select the swatch in the UI if color came from URL
+                    const urlColor = this.getColorFromUrl();
+                    if (urlColor !== null) {
+                        this.preselectSwatch(urlColor);
+                    }
                 }
             },
 
@@ -73,6 +79,11 @@ $galleryConfigJson = $galleryDataViewModel->getGalleryConfigJson();
 
             switchColor(optionId, isInitial) {
                 if (optionId === null || optionId === undefined || isNaN(optionId)) {
+                    return;
+                }
+
+                // Skip redundant processing when same color is re-selected
+                if (optionId === this.currentColorOptionId && !isInitial) {
                     return;
                 }
 
@@ -273,6 +284,30 @@ $galleryConfigJson = $galleryDataViewModel->getGalleryConfigJson();
                 }
 
                 return path;
+            },
+
+            preselectSwatch(optionId) {
+                if (!optionId || !this.config.colorAttributeId) return;
+                const attrId = this.config.colorAttributeId;
+                let attempts = 0;
+                const tryClick = () => {
+                    const container = document.querySelector(
+                        `.swatch-attribute[data-attribute-id="${attrId}"]`
+                    );
+                    if (container) {
+                        const option = container.querySelector(
+                            `.swatch-option[data-option-id="${optionId}"]`
+                        );
+                        if (option && !option.classList.contains('selected')) {
+                            option.click();
+                            return;
+                        }
+                    }
+                    if (++attempts < 50) {
+                        setTimeout(tryClick, 100);
+                    }
+                };
+                tryClick();
             },
 
             slugify(str) {
