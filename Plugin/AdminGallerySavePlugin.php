@@ -73,7 +73,8 @@ class AdminGallerySavePlugin
         $connection = $this->resourceConnection->getConnection();
         $tableName = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery_value');
 
-        // Track which value_ids were explicitly handled via rollpix_color_mapping
+        // Track which real DB value_ids were explicitly handled via rollpix_color_mapping.
+        // Only valid positive integers are tracked (temp hash IDs cast to 0 are excluded).
         $handledValueIds = [];
 
         // Only proceed with color mapping update if we have explicit data from the admin UI.
@@ -89,19 +90,25 @@ class AdminGallerySavePlugin
                     continue;
                 }
 
-                $handledValueIds[] = (int) $valueId;
+                $intValueId = (int) $valueId;
 
                 $associatedAttributes = $colorMappingData[$valueId];
                 if ($associatedAttributes === '' || $associatedAttributes === '0') {
                     $associatedAttributes = null;
                 }
 
-                // update() returns number of rows whose values actually changed
-                // (MySQL reports 0 affected rows when new value equals old value)
+                // For new images, (int) "tempHash" = 0 → UPDATE WHERE value_id=0 matches nothing.
+                // Only execute UPDATE and mark as handled for real positive DB value_ids.
+                if ($intValueId <= 0) {
+                    continue;
+                }
+
+                $handledValueIds[] = $intValueId;
+
                 $rowsAffected = $connection->update(
                     $tableName,
                     ['associated_attributes' => $associatedAttributes],
-                    ['value_id = ?' => (int) $valueId]
+                    ['value_id = ?' => $intValueId]
                 );
 
                 if ($rowsAffected > 0) {
@@ -112,24 +119,36 @@ class AdminGallerySavePlugin
 
         // Fallback: for new images, rollpix_color_mapping keys use temp hash value_ids
         // that don't match the real DB value_ids assigned during Product::save().
-        // Use the file-path-based mapping (sent alongside) to match by image file path.
+        // Use the file-path-based mapping to look up real value_ids from the DB.
         $fileMappingData = $this->request->getParam('rollpix_color_mapping_by_file');
         if (is_array($fileMappingData) && !empty($fileMappingData)) {
-            foreach ($mediaGallery['images'] as $image) {
-                $valueId = $image['value_id'] ?? null;
-                if ($valueId === null || !empty($image['removed'])) {
+            $galleryTable = $this->resourceConnection->getTableName(
+                'catalog_product_entity_media_gallery'
+            );
+            $toEntityTable = $this->resourceConnection->getTableName(
+                'catalog_product_entity_media_gallery_value_to_entity'
+            );
+
+            // Query DB for real value_id → file path mapping for this product
+            $dbFilePairs = $connection->fetchPairs(
+                $connection->select()
+                    ->from(['g' => $galleryTable], ['value_id', 'value'])
+                    ->join(['te' => $toEntityTable], 'g.value_id = te.value_id', [])
+                    ->where('te.entity_id = ?', (int) $result->getId())
+            );
+
+            foreach ($fileMappingData as $filePath => $associatedAttributes) {
+                // Find the real DB value_id for this file path
+                $realValueId = array_search($filePath, $dbFilePairs, true);
+                if ($realValueId === false) {
                     continue;
                 }
-                if (in_array((int) $valueId, $handledValueIds, true)) {
+                $realValueId = (int) $realValueId;
+
+                if (in_array($realValueId, $handledValueIds, true)) {
                     continue;
                 }
 
-                $filePath = $image['file'] ?? null;
-                if ($filePath === null || !isset($fileMappingData[$filePath])) {
-                    continue;
-                }
-
-                $associatedAttributes = $fileMappingData[$filePath];
                 if ($associatedAttributes === '' || $associatedAttributes === '0') {
                     $associatedAttributes = null;
                 }
@@ -137,7 +156,7 @@ class AdminGallerySavePlugin
                 $rowsAffected = $connection->update(
                     $tableName,
                     ['associated_attributes' => $associatedAttributes],
-                    ['value_id = ?' => (int) $valueId]
+                    ['value_id = ?' => $realValueId]
                 );
 
                 if ($rowsAffected > 0) {
