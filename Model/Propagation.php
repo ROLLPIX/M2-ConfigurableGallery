@@ -287,37 +287,56 @@ class Propagation
     /**
      * Remove ALL gallery images from a product via direct DB delete.
      *
+     * Deletes from all three gallery tables:
+     * 1. catalog_product_entity_media_gallery_value (store-specific data)
+     * 2. catalog_product_entity_media_gallery_value_to_entity (entity linkage)
+     * 3. catalog_product_entity_media_gallery (main, only orphaned rows)
+     *
      * @return int Number of images removed
      */
     private function removeAllImages(Product $product, bool $dryRun = false): int
     {
         $connection = $this->resourceConnection->getConnection();
-        $toEntityTable = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery_value_to_entity');
+        $galleryTable = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery');
         $galleryValueTable = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery_value');
+        $toEntityTable = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery_value_to_entity');
 
         $entityId = (int) $product->getId();
 
-        // Count images linked to this product
-        $count = (int) $connection->fetchOne(
+        // Get value_ids linked to this product (needed for main table cleanup)
+        $valueIds = $connection->fetchCol(
             $connection->select()
-                ->from($toEntityTable, ['cnt' => new \Zend_Db_Expr('COUNT(*)')])
+                ->from($toEntityTable, ['value_id'])
                 ->where('entity_id = ?', $entityId)
         );
 
-        if ($count === 0 || $dryRun) {
-            return $count;
+        if (empty($valueIds) || $dryRun) {
+            return count($valueIds);
         }
 
-        // Remove value rows (store-specific data)
-        $connection->delete($galleryValueTable, ['entity_id = ?' => $entityId]);
+        // 1. Remove store-specific data (FK child of main)
+        $connection->delete($galleryValueTable, ['value_id IN (?)' => $valueIds]);
 
-        // Remove entity linkage
+        // 2. Remove entity linkage (FK child of main)
         $connection->delete($toEntityTable, ['entity_id = ?' => $entityId]);
+
+        // 3. Remove orphaned rows from main gallery table
+        //    (only if the value_id is no longer linked to ANY other product)
+        foreach ($valueIds as $valueId) {
+            $stillLinked = (int) $connection->fetchOne(
+                $connection->select()
+                    ->from($toEntityTable, [new \Zend_Db_Expr('COUNT(*)')])
+                    ->where('value_id = ?', (int) $valueId)
+            );
+            if ($stillLinked === 0) {
+                $connection->delete($galleryTable, ['value_id = ?' => (int) $valueId]);
+            }
+        }
 
         // Reset image role attributes to 'no_selection'
         $this->resetImageRoles($product);
 
-        return $count;
+        return count($valueIds);
     }
 
     /**

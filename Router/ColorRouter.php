@@ -36,6 +36,12 @@ class ColorRouter implements RouterInterface
 
     public function match(RequestInterface $request): ?\Magento\Framework\App\ActionInterface
     {
+        // Prevent infinite loop: Forward re-dispatches through all routers,
+        // so skip if we already matched on a previous iteration.
+        if ($request->getParam('rollpix_seo_color_option') !== null) {
+            return null;
+        }
+
         $storeId = $this->storeManager->getStore()->getId();
 
         if (!$this->config->isEnabled($storeId)) {
@@ -58,15 +64,15 @@ class ColorRouter implements RouterInterface
             $pathWithoutSuffix = substr($pathInfo, 0, -strlen($urlSuffix));
         }
 
-        // Need at least 3 segments: product-url / attr-code / slug
+        // Need at least 3 segments: product-url / attr-label-slug / color-slug
         $segments = explode('/', $pathWithoutSuffix);
         if (count($segments) < 3) {
             return null;
         }
 
-        // Extract the last 2 segments as attr-code and slug
+        // Extract the last 2 segments as attr-label-slug and color-slug
         $colorSlug = array_pop($segments);
-        $attrCode = array_pop($segments);
+        $attrLabelSlug = array_pop($segments);
 
         // Rebuild the product URL path
         $productPath = implode('/', $segments);
@@ -74,9 +80,12 @@ class ColorRouter implements RouterInterface
             return null;
         }
 
-        // Verify the attribute code is one of our selector attributes
+        // Resolve the URL segment to a selector attribute code by matching
+        // against the slugified frontend label of each selector attribute.
+        // e.g. URL segment "color" → attribute code "rollpix_erp_color" (label "Color")
         $selectorAttributes = $this->config->getSelectorAttributes($storeId);
-        if (!in_array($attrCode, $selectorAttributes, true)) {
+        $attrCode = $this->resolveAttributeCodeFromLabelSlug($attrLabelSlug, $selectorAttributes, $storeId);
+        if ($attrCode === null) {
             return null;
         }
 
@@ -180,6 +189,48 @@ class ColorRouter implements RouterInterface
         }
 
         return $this->slugGenerator->resolveOptionId($slug, $options);
+    }
+
+    /**
+     * Resolve a URL segment (slugified attribute label) to an attribute code.
+     * e.g. "color" → "rollpix_erp_color" when attribute has frontend label "Color".
+     */
+    private function resolveAttributeCodeFromLabelSlug(string $slug, array $selectorAttributes, int|string $storeId): ?string
+    {
+        $connection = $this->resourceConnection->getConnection();
+        $attrTable = $this->resourceConnection->getTableName('eav_attribute');
+        $labelTable = $this->resourceConnection->getTableName('eav_attribute_label');
+
+        foreach ($selectorAttributes as $attrCode) {
+            $row = $connection->fetchRow(
+                $connection->select()
+                    ->from($attrTable, ['attribute_id', 'frontend_label'])
+                    ->where('attribute_code = ?', $attrCode)
+                    ->where('entity_type_id = ?', 4)
+            );
+
+            if (!$row) {
+                continue;
+            }
+
+            // Check store-specific label first, fallback to admin default
+            $storeLabel = $connection->fetchOne(
+                $connection->select()
+                    ->from($labelTable, ['value'])
+                    ->where('attribute_id = ?', (int) $row['attribute_id'])
+                    ->where('store_id = ?', (int) $storeId)
+            );
+
+            $label = ($storeLabel !== false && $storeLabel !== null && $storeLabel !== '')
+                ? $storeLabel
+                : ($row['frontend_label'] ?? '');
+
+            if ($label !== '' && $this->slugGenerator->slugify($label) === $slug) {
+                return $attrCode;
+            }
+        }
+
+        return null;
     }
 
     private function getUrlSuffix(int|string $storeId): string

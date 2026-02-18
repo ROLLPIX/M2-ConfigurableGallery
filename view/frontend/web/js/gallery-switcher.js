@@ -394,9 +394,9 @@ define([], function () {
                     var slug = this.config.seoColorSlugMap[optionId];
                     if (slug) {
                         var basePath = this._getBaseProductPath();
-                        var attrCode = this.colorAttributeCode;
+                        var attrSlug = this.config.seoAttributeSlug || this.colorAttributeCode;
                         var suffix = this.config.urlSuffix || '';
-                        var newPath = basePath + '/' + attrCode + '/' + slug + suffix;
+                        var newPath = basePath + '/' + attrSlug + '/' + slug + suffix;
                         window.history.replaceState(null, '', newPath + window.location.search);
                         return;
                     }
@@ -453,6 +453,7 @@ define([], function () {
         _getColorFromSeoPath: function () {
             var path = window.location.pathname;
             var suffix = this.config.urlSuffix || '';
+            var attrSlug = this.config.seoAttributeSlug || this.colorAttributeCode;
 
             // Strip suffix
             if (suffix && path.length > suffix.length &&
@@ -461,15 +462,15 @@ define([], function () {
             }
 
             var segments = path.split('/');
-            // Need at least: ['', 'product-url', 'attr-code', 'slug']
+            // Need at least: ['', 'product-url', 'attr-slug', 'color-slug']
             if (segments.length < 4) {
                 return null;
             }
 
             var slug = segments[segments.length - 1];
-            var attrCode = segments[segments.length - 2];
+            var pathAttr = segments[segments.length - 2];
 
-            if (attrCode !== this.colorAttributeCode) {
+            if (pathAttr !== attrSlug) {
                 return null;
             }
 
@@ -494,6 +495,7 @@ define([], function () {
         _getBaseProductPath: function () {
             var path = window.location.pathname;
             var suffix = this.config.urlSuffix || '';
+            var attrSlug = this.config.seoAttributeSlug || this.colorAttributeCode;
 
             // Strip suffix
             if (suffix && path.length > suffix.length &&
@@ -501,11 +503,11 @@ define([], function () {
                 path = path.substring(0, path.length - suffix.length);
             }
 
-            // Strip /{attr-code}/{slug} if present
+            // Strip /{attr-slug}/{color-slug} if present
             var segments = path.split('/');
             if (segments.length >= 4) {
                 var maybeAttr = segments[segments.length - 2];
-                if (maybeAttr === this.colorAttributeCode) {
+                if (maybeAttr === attrSlug) {
                     segments = segments.slice(0, segments.length - 2);
                     path = segments.join('/');
                 }

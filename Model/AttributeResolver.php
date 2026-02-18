@@ -125,6 +125,22 @@ class AttributeResolver
     }
 
     /**
+     * Get the frontend label of an attribute (admin default).
+     */
+    public function getAttributeLabel(string $attributeCode): string
+    {
+        try {
+            $attribute = $this->attributeRepository->get(
+                Product::ENTITY,
+                $attributeCode
+            );
+            return $attribute->getDefaultFrontendLabel() ?? $attributeCode;
+        } catch (\Exception $e) {
+            return $attributeCode;
+        }
+    }
+
+    /**
      * Get super attribute codes for a configurable product.
      *
      * @return string[]

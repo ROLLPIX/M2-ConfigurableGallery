@@ -5,18 +5,21 @@ declare(strict_types=1);
 namespace Rollpix\ConfigurableGallery\Plugin;
 
 use Magento\Catalog\Model\Product;
+use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
 use Magento\Framework\App\RequestInterface;
 use Magento\Framework\App\ResourceConnection;
 use Psr\Log\LoggerInterface;
 use Rollpix\ConfigurableGallery\Model\Config;
+use Rollpix\ConfigurableGallery\Model\Propagation;
 
 /**
  * Persists color mapping (associated_attributes) when saving a product in admin.
  * PRD §6.2 — Reads the color mapping data from the request and writes to DB.
  *
  * Also detects gallery changes (new/removed images, color mapping modifications)
- * and sets a flag on the product so the auto-propagation observer can skip
- * unnecessary propagation runs (e.g. when only price/stock changed).
+ * and triggers automatic propagation when enabled. Propagation runs here
+ * (not in an observer) because this plugin executes AFTER Product::save()
+ * completes, ensuring all gallery data is persisted before propagation.
  *
  * sortOrder=10: base plugin for admin product save.
  */
@@ -24,6 +27,7 @@ class AdminGallerySavePlugin
 {
     public function __construct(
         private readonly Config $config,
+        private readonly Propagation $propagation,
         private readonly ResourceConnection $resourceConnection,
         private readonly RequestInterface $request,
         private readonly LoggerInterface $logger
@@ -101,10 +105,6 @@ class AdminGallerySavePlugin
             }
         }
 
-        if ($galleryChanged) {
-            $result->setData('rollpix_gallery_changed', true);
-        }
-
         if ($this->config->isDebugMode()) {
             $this->logger->debug('Rollpix ConfigurableGallery: Saved color mapping for product', [
                 'product_id' => $result->getId(),
@@ -113,6 +113,52 @@ class AdminGallerySavePlugin
             ]);
         }
 
+        // Trigger automatic propagation if gallery changed and product is configurable
+        if ($galleryChanged && $result->getTypeId() === Configurable::TYPE_CODE) {
+            $this->triggerPropagation($result);
+        }
+
         return $result;
+    }
+
+    /**
+     * Trigger automatic propagation for a configurable product.
+     * Only runs when propagation_mode = "automatic".
+     */
+    private function triggerPropagation(Product $product): void
+    {
+        $storeId = $product->getStoreId();
+
+        if ($this->config->getPropagationMode($storeId) !== 'automatic') {
+            return;
+        }
+
+        try {
+            $report = $this->propagation->propagate($product);
+
+            $actionCount = count($report['actions']);
+            $errorCount = count($report['errors']);
+
+            if ($actionCount > 0 || $errorCount > 0) {
+                $this->logger->info('Rollpix ConfigurableGallery: Auto-propagation on save', [
+                    'product_id' => $product->getId(),
+                    'sku' => $product->getSku(),
+                    'actions' => $actionCount,
+                    'errors' => $errorCount,
+                ]);
+            }
+
+            if ($errorCount > 0) {
+                $this->logger->warning('Rollpix ConfigurableGallery: Auto-propagation errors', [
+                    'product_id' => $product->getId(),
+                    'errors' => $report['errors'],
+                ]);
+            }
+        } catch (\Exception $e) {
+            $this->logger->error('Rollpix ConfigurableGallery: Auto-propagation failed', [
+                'product_id' => $product->getId(),
+                'exception' => $e->getMessage(),
+            ]);
+        }
     }
 }

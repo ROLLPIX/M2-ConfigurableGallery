@@ -232,7 +232,7 @@ $galleryConfigJson = $galleryDataViewModel->getGalleryConfigJson();
             getColorFromSeoPath() {
                 let path = window.location.pathname;
                 const suffix = this.config.urlSuffix || '';
-                const attrCode = this.config.colorAttributeCode || 'color';
+                const attrSlug = this.config.seoAttributeSlug || this.config.colorAttributeCode || 'color';
 
                 if (suffix && path.endsWith(suffix)) {
                     path = path.slice(0, -suffix.length);
@@ -243,7 +243,7 @@ $galleryConfigJson = $galleryDataViewModel->getGalleryConfigJson();
 
                 const slug = segments[segments.length - 1];
                 const pathAttr = segments[segments.length - 2];
-                if (pathAttr !== attrCode) return null;
+                if (pathAttr !== attrSlug) return null;
 
                 const slugMap = this.config.seoColorSlugMap || {};
                 const availableColors = this.config.availableColors || [];
@@ -261,14 +261,14 @@ $galleryConfigJson = $galleryDataViewModel->getGalleryConfigJson();
             getBaseProductPath() {
                 let path = window.location.pathname;
                 const suffix = this.config.urlSuffix || '';
-                const attrCode = this.config.colorAttributeCode || 'color';
+                const attrSlug = this.config.seoAttributeSlug || this.config.colorAttributeCode || 'color';
 
                 if (suffix && path.endsWith(suffix)) {
                     path = path.slice(0, -suffix.length);
                 }
 
                 const segments = path.split('/');
-                if (segments.length >= 4 && segments[segments.length - 2] === attrCode) {
+                if (segments.length >= 4 && segments[segments.length - 2] === attrSlug) {
                     path = segments.slice(0, segments.length - 2).join('/');
                 }
 
@@ -293,9 +293,9 @@ $galleryConfigJson = $galleryDataViewModel->getGalleryConfigJson();
                         const slug = this.config.seoColorSlugMap[optionId];
                         if (slug) {
                             const basePath = this.getBaseProductPath();
-                            const attrCode = this.config.colorAttributeCode || 'color';
+                            const attrSlug = this.config.seoAttributeSlug || this.config.colorAttributeCode || 'color';
                             const suffix = this.config.urlSuffix || '';
-                            const newPath = basePath + '/' + attrCode + '/' + slug + suffix;
+                            const newPath = basePath + '/' + attrSlug + '/' + slug + suffix;
                             window.history.replaceState(null, '', newPath + window.location.search);
                             return;
                         }

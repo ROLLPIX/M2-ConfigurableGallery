@@ -131,11 +131,16 @@ class GalleryData implements ArgumentInterface
         $seoFriendlyUrl = $this->config->isSeoFriendlyUrlEnabled($storeId);
         $seoColorSlugMap = null;
         $seoPreselectedColor = null;
+        $seoAttributeSlug = null;
         $urlSuffix = '';
 
         if ($seoFriendlyUrl) {
             // Build slug map from color labels
             $seoColorSlugMap = $this->slugGenerator->buildSlugMap($colorLabels);
+
+            // Slugified attribute label for URL path (e.g. "Color" → "color")
+            $attrLabel = $this->attributeResolver->getAttributeLabel($resolvedAttributeCode);
+            $seoAttributeSlug = $this->slugGenerator->slugify($attrLabel);
 
             // Check if router resolved a color from SEO URL
             $seoOptionId = $this->request->getParam('rollpix_seo_color_option');
@@ -164,6 +169,7 @@ class GalleryData implements ArgumentInterface
             'seoFriendlyUrl' => $seoFriendlyUrl,
             'seoColorSlugMap' => $seoColorSlugMap,
             'seoPreselectedColor' => $seoPreselectedColor,
+            'seoAttributeSlug' => $seoAttributeSlug,
             'urlSuffix' => $urlSuffix,
             'availableColors' => $availableColorIds,
             'colorsWithStock' => $colorsWithStock,
