@@ -46,6 +46,7 @@ define([
         this._isSlider = false;
         this._readyRetries = 0;
         this._originalState = null;
+        this._filterState = null;
         this._swapRetries = 0;
         this._injectStyles();
         this._bindEvents();
@@ -201,38 +202,39 @@ define([
                 console.warn(LOG_PREFIX, 'Config colorMapping keys:', Object.keys(config.colorMapping || {}));
             }
 
-            // Apply show/hide to DOM
+            // Compute visible indices from visibleSet
             var $thumbs = $gallery.find('.rp-thumbnail-item');
             var visibleIndexes = [];
 
+            for (var vi2 = 0; vi2 < allImages.length; vi2++) {
+                if (visibleSet[vi2]) {
+                    visibleIndexes.push(vi2);
+                }
+            }
+
+            // Safety: never hide ALL items
+            if (visibleIndexes.length === 0 && $items.length > 0) {
+                console.warn(LOG_PREFIX, 'Safety guard: restoring all items (0 visible)');
+                return;
+            }
+
+            // Slider: swap image sources instead of CSS hiding.
+            // CSS hiding creates gaps in the carousel and conflicts with the
+            // slider's closure-private state, resulting in blank slides.
+            if (this._isSlider) {
+                this._filterSliderBySwap($gallery, $items, $thumbs, visibleIndexes);
+                return;
+            }
+
+            // Non-slider layouts: CSS hide/show works fine
             $items.each(function (idx) {
                 var isVisible = !!visibleSet[idx];
-
                 $(this).toggleClass(HIDDEN_CLASS, !isVisible);
-                if (isVisible) {
-                    visibleIndexes.push(idx);
-                }
-
-                // Update corresponding thumbnail
                 if (idx < $thumbs.length) {
                     $thumbs.eq(idx).toggleClass(HIDDEN_CLASS, !isVisible);
                 }
             });
-
-            // Safety: never hide ALL items — abort and restore if that would happen
-            if (visibleIndexes.length === 0 && $items.length > 0) {
-                console.warn(LOG_PREFIX, 'Safety guard: restoring all items (0 visible)');
-                $items.removeClass(HIDDEN_CLASS);
-                $thumbs.removeClass(HIDDEN_CLASS);
-                return;
-            }
-
-            // Layout-specific state management
-            if (this._isSlider) {
-                this._updateSliderState($gallery, $items, $thumbs, visibleIndexes);
-            } else {
-                this._updateNonSliderState($gallery, $thumbs, visibleIndexes);
-            }
+            this._updateNonSliderState($gallery, $thumbs, visibleIndexes);
         },
 
         /**
@@ -463,6 +465,213 @@ define([
                 } else if (target < $thumbs.length) {
                     $thumbs.eq(target).trigger('click');
                 }
+            }
+        },
+
+        /**
+         * Slider filter: swap image sources instead of CSS hiding.
+         *
+         * CSS hiding creates gaps in the slider carousel and conflicts with
+         * its closure-private state (blank slides, wrong dot count).
+         * Instead, this method packs visible images at DOM positions 0..N-1
+         * by swapping their sources, then hides extras at the END only.
+         * The slider's internal state stays consistent because positions
+         * 0..N-1 are always contiguous and visible.
+         *
+         * @param {jQuery} $gallery - Gallery container
+         * @param {jQuery} $items - All .rp-gallery-item elements
+         * @param {jQuery} $thumbs - All .rp-thumbnail-item elements
+         * @param {Array} visibleIndexes - Original indices of images to show
+         */
+        _filterSliderBySwap: function ($gallery, $items, $thumbs, visibleIndexes) {
+            var domCount = $items.length;
+            var visCount = visibleIndexes.length;
+            var allVisible = (visCount >= domCount);
+
+            // Store original DOM state on first filter call
+            if (!this._filterState) {
+                this._filterState = {items: [], thumbs: []};
+                var self = this;
+
+                $items.each(function () {
+                    var $item = $(this);
+                    var $img = $item.find('img').first();
+                    self._filterState.items.push({
+                        src: $img.attr('src') || '',
+                        zoomSrc: $img.attr('data-zoom-image') || '',
+                        href: $item.is('a') ? ($item.attr('href') || '') : null
+                    });
+                });
+
+                $thumbs.each(function () {
+                    var $img = $(this).find('img').first();
+                    self._filterState.thumbs.push({
+                        src: $img.attr('src') || ''
+                    });
+                });
+            }
+
+            // All visible → restore original state
+            if (allVisible) {
+                this._restoreFilterState($gallery, $items, $thumbs);
+                return;
+            }
+
+            // Collect original sources for the visible items
+            var visibleItemSources = [];
+            var visibleThumbSources = [];
+
+            for (var v = 0; v < visCount; v++) {
+                var origIdx = visibleIndexes[v];
+
+                if (origIdx < this._filterState.items.length) {
+                    visibleItemSources.push(this._filterState.items[origIdx]);
+                }
+                if (origIdx < this._filterState.thumbs.length) {
+                    visibleThumbSources.push(this._filterState.thumbs[origIdx]);
+                }
+            }
+
+            // Unhide all first (previous filter may have hidden extras at the end)
+            $items.removeClass(HIDDEN_CLASS);
+            $thumbs.removeClass(HIDDEN_CLASS);
+
+            // Pack visible images at positions 0..N-1, hide extras at the END
+            for (var i = 0; i < domCount; i++) {
+                var $item = $items.eq(i);
+                var $img = $item.find('img').first();
+
+                if (i < visibleItemSources.length) {
+                    var data = visibleItemSources[i];
+
+                    if ($img.length) {
+                        $img.attr('src', data.src);
+                        if (data.zoomSrc) {
+                            $img.attr('data-zoom-image', data.zoomSrc);
+                        }
+                    }
+                    if (data.href !== null && $item.is('a')) {
+                        $item.attr('href', data.href);
+                    }
+
+                    // Update corresponding thumbnail
+                    if (i < $thumbs.length && i < visibleThumbSources.length) {
+                        var $thumbImg = $thumbs.eq(i).find('img').first();
+
+                        if ($thumbImg.length) {
+                            $thumbImg.attr('src', visibleThumbSources[i].src);
+                        }
+                    }
+                } else {
+                    // Hide extra items at the end (no gaps in the middle)
+                    $item.addClass(HIDDEN_CLASS);
+                    if (i < $thumbs.length) {
+                        $thumbs.eq(i).addClass(HIDDEN_CLASS);
+                    }
+                }
+            }
+
+            // Update dots: show 0..N-1, hide the rest
+            var $dots = $gallery.find('.rp-slider-dot');
+
+            $dots.each(function (idx) {
+                $(this).toggleClass(HIDDEN_CLASS, idx >= visCount);
+            });
+
+            // Activate first slide
+            $dots.removeClass('rp-dot-active');
+            if ($dots.length > 0) {
+                $dots.eq(0).addClass('rp-dot-active');
+            }
+
+            $thumbs.removeClass('rp-thumbnail-active');
+            if ($thumbs.length > 0) {
+                $thumbs.eq(0).addClass('rp-thumbnail-active');
+            }
+
+            // Click first thumbnail to sync slider's internal currentIndex
+            if ($thumbs.length > 0) {
+                $thumbs.eq(0).trigger('click');
+            }
+
+            // Hide arrows — the slider's internal totalItems still counts
+            // hidden items, so arrow navigation would reach blank slides
+            $gallery.find('.rp-slider-prev, .rp-slider-next').addClass(HIDDEN_CLASS);
+
+            // Swipe guard: if mobile swipe lands on a hidden slide, redirect
+            var self2 = this;
+            var guardIndexes = [];
+
+            for (var g = 0; g < visCount; g++) {
+                guardIndexes.push(g);
+            }
+
+            $gallery.off('.rpCgFilter').on('touchend.rpCgFilter', function () {
+                setTimeout(function () {
+                    self2._ensureVisibleSlide($items, $dots, $thumbs, guardIndexes);
+                }, 350);
+            });
+        },
+
+        /**
+         * Restore original DOM state after slider filter swap.
+         * Called when all images become visible (no color filter active).
+         */
+        _restoreFilterState: function ($gallery, $items, $thumbs) {
+            if (!this._filterState) {
+                return;
+            }
+
+            var orig = this._filterState;
+
+            // Restore image sources
+            $items.each(function (idx) {
+                var $item = $(this);
+                $item.removeClass(HIDDEN_CLASS);
+
+                if (idx < orig.items.length) {
+                    var data = orig.items[idx];
+                    var $img = $item.find('img').first();
+
+                    if ($img.length) {
+                        $img.attr('src', data.src);
+                        if (data.zoomSrc) {
+                            $img.attr('data-zoom-image', data.zoomSrc);
+                        }
+                    }
+                    if (data.href !== null && $item.is('a')) {
+                        $item.attr('href', data.href);
+                    }
+                }
+            });
+
+            // Restore thumbnail sources
+            $thumbs.each(function (idx) {
+                $(this).removeClass(HIDDEN_CLASS);
+
+                if (idx < orig.thumbs.length) {
+                    var $img = $(this).find('img').first();
+
+                    if ($img.length) {
+                        $img.attr('src', orig.thumbs[idx].src);
+                    }
+                }
+            });
+
+            // Restore dots, arrows, remove swipe guard
+            var $dots = $gallery.find('.rp-slider-dot');
+            $dots.removeClass(HIDDEN_CLASS).removeClass('rp-dot-active');
+
+            if ($dots.length > 0) {
+                $dots.eq(0).addClass('rp-dot-active');
+            }
+
+            $gallery.find('.rp-slider-prev, .rp-slider-next').removeClass(HIDDEN_CLASS);
+            $gallery.off('.rpCgFilter');
+
+            // Sync slider to first slide
+            if ($thumbs.length > 0) {
+                $thumbs.eq(0).trigger('click');
             }
         },
 

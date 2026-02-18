@@ -16,8 +16,11 @@ define([
         var plpConfig = (config && config.rollpixPlpConfig) || {};
 
         if ($.isEmptyObject(plpConfig)) {
+            console.warn('[RollpixCG PLP] No rollpixPlpConfig data — hoverslider-compat disabled');
             return;
         }
+
+        console.warn('[RollpixCG PLP] hoverslider-compat loaded,', Object.keys(plpConfig).length, 'products');
 
         /**
          * Update HoverSlider images for a product after swatch change.
