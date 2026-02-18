@@ -14,6 +14,10 @@ use Rollpix\ConfigurableGallery\Model\Propagation;
 /**
  * Triggers automatic image propagation when a configurable product is saved
  * and propagation_mode = "automatic" (PRD §6.3).
+ *
+ * Only propagates when AdminGallerySavePlugin detected actual gallery changes
+ * (new/removed images or color mapping modifications). This avoids expensive
+ * propagation runs when only price, stock, or other non-gallery fields changed.
  */
 class ProductSaveAfterObserver implements ObserverInterface
 {
@@ -42,6 +46,18 @@ class ProductSaveAfterObserver implements ObserverInterface
         }
 
         if ($this->config->getPropagationMode($storeId) !== 'automatic') {
+            return;
+        }
+
+        // Skip propagation if no gallery changes were detected by AdminGallerySavePlugin.
+        // This prevents expensive propagation on saves that only update price, stock, etc.
+        if (!$product->getData('rollpix_gallery_changed')) {
+            if ($this->config->isDebugMode($storeId)) {
+                $this->logger->debug('Rollpix ConfigurableGallery: Skip auto-propagation (no gallery changes)', [
+                    'product_id' => $product->getId(),
+                    'sku' => $product->getSku(),
+                ]);
+            }
             return;
         }
 

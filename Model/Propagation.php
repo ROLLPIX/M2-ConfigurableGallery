@@ -6,8 +6,6 @@ namespace Rollpix\ConfigurableGallery\Model;
 
 use Magento\Catalog\Api\ProductRepositoryInterface;
 use Magento\Catalog\Model\Product;
-use Magento\Catalog\Model\Product\Gallery\Processor as GalleryProcessor;
-use Magento\Catalog\Model\ResourceModel\Product\Gallery as GalleryResource;
 use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
 use Magento\Framework\App\Filesystem\DirectoryList;
 use Magento\Framework\App\ResourceConnection;
@@ -18,17 +16,15 @@ use Psr\Log\LoggerInterface;
  * Propagates images from configurable parent to simple children (PRD §6.3).
  *
  * Modes:
- * - automatic: triggered on product save (via observer/plugin, Fase 7)
+ * - automatic: triggered on product save (via observer, Fase 7)
  * - manual: triggered via CLI command (bin/magento rollpix:gallery:propagate)
  *
  * The propagation creates copies of the parent's images in each simple child,
- * filtered by color. Marks propagated images with a special flag to distinguish
- * from manually uploaded images (to avoid deletion on re-propagation).
+ * filtered by color. When cleanFirst is enabled, ALL existing images on the
+ * child are removed before re-propagating (ensures a clean slate).
  */
 class Propagation
 {
-    private const PROPAGATED_FLAG = 'rollpix_propagated';
-
     public function __construct(
         private readonly Config $config,
         private readonly AttributeResolver $attributeResolver,
@@ -45,7 +41,7 @@ class Propagation
      *
      * @param Product $product Configurable product
      * @param bool $dryRun If true, only report what would be done
-     * @param bool $cleanFirst Remove previously propagated images before re-propagating
+     * @param bool $cleanFirst Remove all child images before re-propagating
      * @return array Report of actions taken
      */
     public function propagate(Product $product, bool $dryRun = false, ?bool $cleanFirst = null): array
@@ -117,11 +113,17 @@ class Propagation
                 continue;
             }
 
+            $childChanged = false;
+
             if ($cleanFirst && !$dryRun) {
-                $cleanedCount = $this->cleanPropagatedImages($child);
+                $cleanedCount = $this->removeAllImages($child);
                 if ($cleanedCount > 0) {
+                    $childChanged = true;
+                    // Reset in-memory gallery so dedup check works on clean state
+                    $child->setData('media_gallery', ['images' => [], 'values' => []]);
+                    $child->setData('media_gallery_entries', []);
                     $report['actions'][] = sprintf(
-                        'CLEAN child %s: removed %d previously propagated images',
+                        'CLEAN child %s: removed %d images',
                         $child->getSku(),
                         $cleanedCount
                     );
@@ -144,12 +146,15 @@ class Propagation
                 }
 
                 try {
-                    $this->propagateImage($child, $file, $propagationRoles, $image);
-                    $report['actions'][] = sprintf(
-                        'PROPAGATED %s → child %s',
-                        $file,
-                        $child->getSku()
-                    );
+                    $added = $this->propagateImage($child, $file, $propagationRoles, $image);
+                    if ($added) {
+                        $childChanged = true;
+                        $report['actions'][] = sprintf(
+                            'PROPAGATED %s → child %s',
+                            $file,
+                            $child->getSku()
+                        );
+                    }
                 } catch (\Exception $e) {
                     $report['errors'][] = sprintf(
                         'ERROR propagating %s → child %s: %s',
@@ -160,8 +165,8 @@ class Propagation
                 }
             }
 
-            // Save the child product if we made changes
-            if (!$dryRun) {
+            // Only save the child if we actually made changes
+            if ($childChanged && !$dryRun) {
                 try {
                     $this->productRepository->save($child);
                 } catch (\Exception $e) {
@@ -184,8 +189,9 @@ class Propagation
      * @param string $file Image file path (relative, e.g. /r/e/remera-roja-1.jpg)
      * @param string[] $roles Image roles to assign
      * @param array $imageData Original image entry data
+     * @return bool True if the image was added, false if skipped (already exists)
      */
-    private function propagateImage(Product $child, string $file, array $roles, array $imageData): void
+    private function propagateImage(Product $child, string $file, array $roles, array $imageData): bool
     {
         $mediaDir = $this->filesystem->getDirectoryRead(DirectoryList::MEDIA);
         $absolutePath = $mediaDir->getAbsolutePath('catalog/product' . $file);
@@ -194,12 +200,11 @@ class Propagation
             throw new \RuntimeException(sprintf('Source file not found: %s', $absolutePath));
         }
 
-        // Check if this image already exists in the child
+        // Check if this image already exists in the child (dedup by file path)
         $existingGallery = $child->getMediaGalleryEntries() ?? [];
         foreach ($existingGallery as $entry) {
             if ($entry->getFile() === $file) {
-                // Image already exists, skip
-                return;
+                return false;
             }
         }
 
@@ -211,8 +216,7 @@ class Propagation
             false  // exclude
         );
 
-        // Mark as propagated in DB
-        $this->markAsPropagated($child, $file);
+        return true;
     }
 
     /**
@@ -222,36 +226,6 @@ class Propagation
     {
         $gallery = $child->getMediaGalleryEntries();
         return empty($gallery);
-    }
-
-    /**
-     * Mark an image as propagated by Rollpix (to distinguish from manual uploads).
-     */
-    private function markAsPropagated(Product $child, string $file): void
-    {
-        // Store the propagation flag in associated_attributes with a special prefix
-        $connection = $this->resourceConnection->getConnection();
-        $tableName = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery_value');
-        $galleryTable = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery');
-
-        $valueId = $connection->fetchOne(
-            $connection->select()
-                ->from($galleryTable, ['value_id'])
-                ->where('value = ?', $file)
-        );
-
-        if ($valueId) {
-            // We'll use a special comment in the label or a separate mechanism
-            // For now, store in the DB to track propagated images
-            $connection->update(
-                $tableName,
-                ['label' => self::PROPAGATED_FLAG],
-                [
-                    'value_id = ?' => (int) $valueId,
-                    'entity_id = ?' => (int) $child->getId(),
-                ]
-            );
-        }
     }
 
     /**
@@ -378,46 +352,5 @@ class Propagation
                 ]
             );
         }
-    }
-
-    /**
-     * Remove previously propagated images from a child product.
-     *
-     * @return int Number of images removed
-     */
-    private function cleanPropagatedImages(Product $child): int
-    {
-        $connection = $this->resourceConnection->getConnection();
-        $tableName = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery_value');
-        $galleryTable = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery');
-        $toEntityTable = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery_value_to_entity');
-
-        // Find propagated images for this child
-        $select = $connection->select()
-            ->from(['mgv' => $tableName], ['value_id'])
-            ->join(
-                ['mgvte' => $toEntityTable],
-                'mgv.value_id = mgvte.value_id',
-                []
-            )
-            ->where('mgvte.entity_id = ?', (int) $child->getId())
-            ->where('mgv.label = ?', self::PROPAGATED_FLAG);
-
-        $valueIds = $connection->fetchCol($select);
-
-        if (empty($valueIds)) {
-            return 0;
-        }
-
-        // Remove the gallery entries for this child
-        $connection->delete(
-            $toEntityTable,
-            [
-                'entity_id = ?' => (int) $child->getId(),
-                'value_id IN (?)' => $valueIds,
-            ]
-        );
-
-        return count($valueIds);
     }
 }
