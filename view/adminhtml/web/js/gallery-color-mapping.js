@@ -167,6 +167,27 @@ define([
                 form.save = function (redirect, data) {
                     this.source.set('data.rollpix_color_mapping', existingMapping);
 
+                    // Build file-path-based mapping as fallback for new images.
+                    // New images get temp hash value_ids in JS, but real DB value_ids
+                    // after Product::save(). The value_id mapping lookup fails for them,
+                    // so we also send {filePath: colorValue} for PHP to match by file.
+                    var fileMapping = {};
+
+                    $('[data-role="image"], .gallery .image').not('.removed').each(function () {
+                        var imgData = $(this).data('imageData');
+
+                        if (imgData && imgData.file && imgData.value_id) {
+                            var vid = String(imgData.value_id);
+                            var colorValue = existingMapping[vid];
+
+                            if (colorValue) {
+                                fileMapping[imgData.file] = colorValue;
+                            }
+                        }
+                    });
+
+                    this.source.set('data.rollpix_color_mapping_by_file', fileMapping);
+
                     return origSave.call(this, redirect, data);
                 };
             });

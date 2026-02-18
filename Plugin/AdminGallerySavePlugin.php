@@ -110,26 +110,36 @@ class AdminGallerySavePlugin
             }
         }
 
-        // Fallback: for new images, the rollpix_color_mapping keys may use temp hashes
-        // that don't match the real value_ids assigned during Product::save().
-        // However, the image's own form data may contain the associated_attributes
-        // value (set by JS auto-detect from filename). Persist it as a fallback.
-        foreach ($mediaGallery['images'] as $image) {
-            $valueId = $image['value_id'] ?? null;
-            if ($valueId === null || !empty($image['removed'])) {
-                continue;
-            }
-            if (in_array((int) $valueId, $handledValueIds, true)) {
-                continue;
-            }
+        // Fallback: for new images, rollpix_color_mapping keys use temp hash value_ids
+        // that don't match the real DB value_ids assigned during Product::save().
+        // Use the file-path-based mapping (sent alongside) to match by image file path.
+        $fileMappingData = $this->request->getParam('rollpix_color_mapping_by_file');
+        if (is_array($fileMappingData) && !empty($fileMappingData)) {
+            foreach ($mediaGallery['images'] as $image) {
+                $valueId = $image['value_id'] ?? null;
+                if ($valueId === null || !empty($image['removed'])) {
+                    continue;
+                }
+                if (in_array((int) $valueId, $handledValueIds, true)) {
+                    continue;
+                }
 
-            $formValue = $image['associated_attributes'] ?? null;
-            if ($formValue !== null && $formValue !== '' && $formValue !== '0') {
+                $filePath = $image['file'] ?? null;
+                if ($filePath === null || !isset($fileMappingData[$filePath])) {
+                    continue;
+                }
+
+                $associatedAttributes = $fileMappingData[$filePath];
+                if ($associatedAttributes === '' || $associatedAttributes === '0') {
+                    $associatedAttributes = null;
+                }
+
                 $rowsAffected = $connection->update(
                     $tableName,
-                    ['associated_attributes' => $formValue],
+                    ['associated_attributes' => $associatedAttributes],
                     ['value_id = ?' => (int) $valueId]
                 );
+
                 if ($rowsAffected > 0) {
                     $galleryChanged = true;
                 }
@@ -141,6 +151,8 @@ class AdminGallerySavePlugin
                 'product_id' => $result->getId(),
                 'image_count' => count($mediaGallery['images']),
                 'gallery_changed' => $galleryChanged,
+                'handled_by_value_id' => count($handledValueIds),
+                'file_mapping_keys' => is_array($fileMappingData) ? array_keys($fileMappingData) : 'none',
             ]);
         }
 
