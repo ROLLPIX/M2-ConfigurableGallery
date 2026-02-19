@@ -629,6 +629,47 @@ define([
                     self2._ensureVisibleSlide($items, $dots, $thumbs, guardIndexes);
                 }, 350);
             });
+
+            // --- DOM scan: find actual dot/pagination elements ---
+            var scanGallery = $gallery;
+            setTimeout(function () {
+                var results = [];
+                // Search inside gallery for any dot/bullet/pagination/indicator class
+                scanGallery.find('*').each(function () {
+                    var cls = (this.className || '').toString();
+                    var lower = cls.toLowerCase();
+                    if (lower.indexOf('dot') >= 0 || lower.indexOf('bullet') >= 0 ||
+                        lower.indexOf('pag') >= 0 || lower.indexOf('indic') >= 0) {
+                        results.push({tag: this.tagName, class: cls.substring(0, 120), children: this.children.length});
+                    }
+                });
+                // Find containers with exactly 6 children (matching 6 gallery items = 6 dots)
+                scanGallery.find('*').each(function () {
+                    if (this.children.length === 6) {
+                        results.push({
+                            note: '6-child-container',
+                            tag: this.tagName,
+                            class: (this.className || '').toString().substring(0, 120),
+                            childTag: this.children[0] ? this.children[0].tagName : '?',
+                            childClass: this.children[0] ? (this.children[0].className || '').toString().substring(0, 80) : '?'
+                        });
+                    }
+                });
+                // Also search OUTSIDE gallery (dots might be a sibling element)
+                var parent = scanGallery.parent();
+                if (parent.length) {
+                    parent.find('*').each(function () {
+                        var cls = (this.className || '').toString();
+                        var lower = cls.toLowerCase();
+                        if ((lower.indexOf('dot') >= 0 || lower.indexOf('bullet') >= 0 ||
+                             lower.indexOf('pag') >= 0 || lower.indexOf('indic') >= 0) &&
+                            !$.contains(scanGallery[0], this)) {
+                            results.push({note: 'OUTSIDE-gallery', tag: this.tagName, class: cls.substring(0, 120)});
+                        }
+                    });
+                }
+                console.log(LOG_PREFIX, 'DOM scan for dots (2s after filter):', JSON.stringify(results, null, 2));
+            }, 2000);
         },
 
         /**
