@@ -76,6 +76,11 @@ define([
             var self = this;
             document.addEventListener('rollpix:gallery:filter', function (event) {
                 var detail = event.detail || {};
+                console.log(LOG_PREFIX, 'filter event received', {
+                    colorOptionId: detail.colorOptionId,
+                    isInitial: detail.isInitial,
+                    imageCount: detail.images ? detail.images.length : 0
+                });
                 self._lastFilterArgs = {
                     images: detail.images,
                     isInitial: detail.isInitial,
@@ -189,8 +194,25 @@ define([
 
             // Safety: never hide ALL items
             if (visibleIndexes.length === 0 && $items.length > 0) {
+                console.warn(LOG_PREFIX, 'No visible items — aborting filter');
                 return;
             }
+
+            console.log(LOG_PREFIX, '_updateGallery', {
+                isSlider: this._isSlider,
+                galleryClasses: $gallery.attr('class'),
+                items: $items.length,
+                thumbs: $thumbs.length,
+                visibleCount: visibleIndexes.length,
+                visibleIndexes: visibleIndexes,
+                dotsInDom: $gallery.find('.rp-slider-dot').length
+            });
+
+            // Proactively hide carousel dots beyond visible count.
+            // CSS nth-child rules auto-apply to elements created later (by
+            // async carousel init), so dots are hidden even if the carousel
+            // hasn't created them yet. This covers both slider and non-slider paths.
+            this._setCarouselFilterCSS(visibleIndexes.length, $items.length, true);
 
             // Carousel/slider: swap image sources instead of CSS hiding.
             // CSS hiding creates gaps in the carousel and conflicts with the
@@ -199,6 +221,8 @@ define([
                 this._filterSliderBySwap($gallery, $items, $thumbs, visibleIndexes);
                 return;
             }
+
+            console.log(LOG_PREFIX, 'Using non-slider CSS path');
 
             // Non-slider layouts: CSS hide/show works fine
             $items.each(function (idx) {
@@ -466,6 +490,14 @@ define([
             var domCount = $items.length;
             var visCount = visibleIndexes.length;
             var allVisible = (visCount >= domCount);
+            var $existingDots = $gallery.find('.rp-slider-dot');
+
+            console.log(LOG_PREFIX, '_filterSliderBySwap', {
+                domCount: domCount,
+                visCount: visCount,
+                allVisible: allVisible,
+                dotsInDom: $existingDots.length
+            });
 
             // Store original DOM state on first filter call
             if (!this._filterState) {
@@ -561,7 +593,8 @@ define([
 
             // CSS rule backup: the carousel may create dots AFTER this filter
             // runs (async init). nth-child rules auto-apply to future elements.
-            this._setCarouselFilterCSS(visCount, domCount);
+            // Pass false = include items/thumbs rules (swap has packed them).
+            this._setCarouselFilterCSS(visCount, domCount, false);
 
             // Activate first slide
             $dots.removeClass('rp-dot-active');
@@ -892,7 +925,15 @@ define([
                 // Re-check carousel state on every access — the Rollpix Gallery
                 // may apply carousel classes after initial DOM render (e.g.,
                 // responsive layout switch via media query or JS init timing).
+                var wasSlider = this._isSlider;
                 this._isSlider = this._detectCarousel(this.$gallery);
+                if (this._isSlider !== wasSlider) {
+                    console.log(LOG_PREFIX, '_getGallery: carousel state changed', {
+                        from: wasSlider,
+                        to: this._isSlider,
+                        classes: this.$gallery.attr('class')
+                    });
+                }
                 return this.$gallery;
             }
 
@@ -900,6 +941,12 @@ define([
             if ($gallery.length && $gallery.find('.rp-gallery-item').length > 0) {
                 this.$gallery = $gallery;
                 this._isSlider = this._detectCarousel($gallery);
+                console.log(LOG_PREFIX, '_getGallery: found gallery', {
+                    isSlider: this._isSlider,
+                    classes: $gallery.attr('class'),
+                    items: $gallery.find('.rp-gallery-item').length,
+                    dots: $gallery.find('.rp-slider-dot').length
+                });
                 return $gallery;
             }
 
@@ -915,16 +962,26 @@ define([
         _watchForCarouselActivation: function () {
             // Already watching or already carousel
             if (this._carouselObserver || this._isSlider || !this.$gallery) {
+                console.log(LOG_PREFIX, '_watchForCarouselActivation skip', {
+                    hasObserver: !!this._carouselObserver,
+                    isSlider: this._isSlider,
+                    hasGallery: !!this.$gallery
+                });
                 return;
             }
 
             // Re-check: carousel may have activated between _getGallery()
             // and this point (race condition with async carousel init).
             if (this._detectCarousel(this.$gallery)) {
+                console.log(LOG_PREFIX, '_watchForCarouselActivation: carousel detected on re-check — reapplying');
                 this._isSlider = true;
                 this._reapplyLastFilter();
                 return;
             }
+
+            console.log(LOG_PREFIX, '_watchForCarouselActivation: setting up MutationObserver', {
+                galleryClasses: this.$gallery.attr('class')
+            });
 
             if (!window.MutationObserver) {
                 // Fallback: poll for carousel activation
@@ -986,8 +1043,10 @@ define([
          */
         _reapplyLastFilter: function () {
             if (!this._lastFilterArgs) {
+                console.log(LOG_PREFIX, '_reapplyLastFilter: no lastFilterArgs');
                 return;
             }
+            console.log(LOG_PREFIX, '_reapplyLastFilter: re-running with swap strategy');
             // Reset filter state so swap strategy stores fresh original sources
             this._filterState = null;
             var args = this._lastFilterArgs;
@@ -1003,7 +1062,7 @@ define([
          * @param {number} visCount - Number of visible items
          * @param {number} totalCount - Total number of gallery items
          */
-        _setCarouselFilterCSS: function (visCount, totalCount) {
+        _setCarouselFilterCSS: function (visCount, totalCount, dotsOnly) {
             var styleId = 'rp-cg-carousel-filter';
             var existing = document.getElementById(styleId);
 
@@ -1016,9 +1075,21 @@ define([
 
             var n = visCount + 1; // nth-child is 1-based
             var css =
-                '[data-role="rp-gallery"] .rp-slider-dots>:nth-child(n+' + n + '){display:none!important}' +
-                '[data-role="rp-gallery"] .rp-gallery-item:nth-child(n+' + n + '){display:none!important}' +
-                '[data-role="rp-gallery"] .rp-thumbnail-item:nth-child(n+' + n + '){display:none!important}';
+                '[data-role="rp-gallery"] .rp-slider-dots>:nth-child(n+' + n + '){display:none!important}';
+
+            if (!dotsOnly) {
+                css +=
+                    '[data-role="rp-gallery"] .rp-gallery-item:nth-child(n+' + n + '){display:none!important}' +
+                    '[data-role="rp-gallery"] .rp-thumbnail-item:nth-child(n+' + n + '){display:none!important}';
+            }
+
+            console.log(LOG_PREFIX, '_setCarouselFilterCSS', {
+                visCount: visCount,
+                totalCount: totalCount,
+                dotsOnly: !!dotsOnly,
+                nthChild: 'n+' + n,
+                cssLength: css.length
+            });
 
             if (existing) {
                 existing.textContent = css;
