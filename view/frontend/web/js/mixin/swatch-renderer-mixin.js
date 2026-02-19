@@ -88,6 +88,9 @@ define([
                 this._rollpixSwitcher.init();
                 this._rollpixInitialized = true;
 
+                // Hide/dim swatches for out-of-stock colors
+                this._applyStockFilterToSwatches();
+
                 // Ensure gallery is filtered once Fotorama is ready.
                 // gallery:loaded may have already fired before this code runs
                 // (RequireJS modules load asynchronously), so we also poll for
@@ -127,14 +130,19 @@ define([
                     var currentColor = self._rollpixSwitcher.getCurrentColor();
 
                     if (currentColor === null) {
-                        // Only auto-detect first color when preselectColor is enabled
                         var cfg = self._getRollpixConfig();
+                        // Auto-detect first color when preselectColor is enabled
                         if (cfg && cfg.preselectColor) {
                             currentColor = self._getFirstVisibleColorOptionId();
                             if (currentColor !== null) {
                                 self._rollpixSwitcher.switchColor(currentColor, true);
                                 return true;
                             }
+                        }
+                        // No preselection — still apply stock filter to gallery
+                        if (cfg && cfg.stockFilterEnabled) {
+                            self._rollpixSwitcher.switchColor(null, true);
+                            return true;
                         }
                         return false;
                     }
@@ -174,14 +182,19 @@ define([
                     var currentColor = self._rollpixSwitcher.getCurrentColor();
 
                     if (currentColor === null) {
-                        // Only auto-detect first color when preselectColor is enabled
                         var cfg = self._getRollpixConfig();
+                        // Auto-detect first color when preselectColor is enabled
                         if (cfg && cfg.preselectColor) {
                             currentColor = self._getFirstVisibleColorOptionId();
                             if (currentColor !== null) {
                                 self._rollpixSwitcher.switchColor(currentColor, true);
                                 return true;
                             }
+                        }
+                        // No preselection — still apply stock filter to gallery
+                        if (cfg && cfg.stockFilterEnabled) {
+                            self._rollpixSwitcher.switchColor(null, true);
+                            return true;
                         }
                         return false;
                     }
@@ -248,6 +261,90 @@ define([
                 }
 
                 return null;
+            },
+
+            /**
+             * Hide or dim swatches for colors without stock.
+             * Uses colorsWithStock from backend config + outOfStockBehavior setting.
+             */
+            _applyStockFilterToSwatches: function () {
+                var config = this._getRollpixConfig();
+                if (!config || !config.stockFilterEnabled || !config.colorsWithStock) {
+                    return;
+                }
+
+                var colorAttrId = config.colorAttributeId;
+                if (!colorAttrId) {
+                    return;
+                }
+
+                var behavior = config.outOfStockBehavior || 'hide';
+                var colorsWithStock = config.colorsWithStock;
+                var self = this;
+
+                // Inject styles once
+                if (!document.getElementById('rp-cg-swatch-stock-styles')) {
+                    var style = document.createElement('style');
+                    style.id = 'rp-cg-swatch-stock-styles';
+                    style.textContent =
+                        '.rp-cg-swatch-hidden { display: none !important; }' +
+                        '.rp-cg-swatch-oos { opacity: 0.3; pointer-events: none; position: relative; }' +
+                        '.rp-cg-swatch-oos::after { content: ""; position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: #666; transform: rotate(-45deg); }';
+                    document.head.appendChild(style);
+                }
+
+                var applyToSwatches = function () {
+                    var $colorAttr = self.element.find(
+                        '.swatch-attribute[data-attribute-id="' + colorAttrId + '"],' +
+                        '.swatch-attribute[attribute-id="' + colorAttrId + '"]'
+                    );
+
+                    if (!$colorAttr.length) {
+                        return false;
+                    }
+
+                    $colorAttr.find('.swatch-option').each(function () {
+                        var $option = $(this);
+                        var optionId = parseInt(
+                            $option.attr('data-option-id') || $option.attr('option-id'),
+                            10
+                        );
+
+                        if (isNaN(optionId)) {
+                            return;
+                        }
+
+                        var hasStock = false;
+                        for (var i = 0; i < colorsWithStock.length; i++) {
+                            if (colorsWithStock[i] === optionId) {
+                                hasStock = true;
+                                break;
+                            }
+                        }
+
+                        if (!hasStock) {
+                            if (behavior === 'hide') {
+                                $option.addClass('rp-cg-swatch-hidden');
+                            } else {
+                                $option.addClass('rp-cg-swatch-oos');
+                            }
+                        }
+                    });
+                    return true;
+                };
+
+                // Swatches may render async — poll until they appear
+                if (!applyToSwatches()) {
+                    var attempts = 0;
+                    var poll = function () {
+                        attempts++;
+                        if (applyToSwatches() || attempts >= 20) {
+                            return;
+                        }
+                        setTimeout(poll, 150);
+                    };
+                    setTimeout(poll, 150);
+                }
             },
 
             /**

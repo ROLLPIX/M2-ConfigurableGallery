@@ -25,6 +25,7 @@ class MissingPhotosCommand extends Command
 {
     private const OPTION_PRODUCT_ID = 'product-id';
     private const OPTION_ALL = 'all';
+    private const OPTION_CSV = 'csv';
 
     public function __construct(
         private readonly Config $config,
@@ -50,6 +51,12 @@ class MissingPhotosCommand extends Command
                 null,
                 InputOption::VALUE_NONE,
                 'Verificar todos los productos configurables'
+            )
+            ->addOption(
+                self::OPTION_CSV,
+                null,
+                InputOption::VALUE_NONE,
+                'Salida en formato CSV (para redirigir a archivo: --csv > output.csv)'
             );
     }
 
@@ -61,23 +68,38 @@ class MissingPhotosCommand extends Command
             // Area code already set
         }
 
-        $output->writeln('');
-        $output->writeln('<info>Rollpix ConfigurableGallery — Colores sin fotos</info>');
-        $output->writeln(str_repeat('=', 50));
+        $csv = $input->getOption(self::OPTION_CSV);
+
+        if (!$csv) {
+            $output->writeln('');
+            $output->writeln('<info>Rollpix ConfigurableGallery — Colores sin fotos</info>');
+            $output->writeln(str_repeat('=', 50));
+        }
 
         $productId = $input->getOption(self::OPTION_PRODUCT_ID);
         $all = $input->getOption(self::OPTION_ALL);
+        $csv = $input->getOption(self::OPTION_CSV);
 
         if ($productId !== null) {
-            $this->checkProduct((int) $productId, $output);
+            if ($csv) {
+                $this->checkAllCsv($output, (int) $productId);
+            } else {
+                $this->checkProduct((int) $productId, $output);
+            }
         } elseif ($all) {
-            $this->checkAll($output);
+            if ($csv) {
+                $this->checkAllCsv($output);
+            } else {
+                $this->checkAll($output);
+            }
         } else {
             $output->writeln('');
             $output->writeln('<info>Use --all para verificar todos, o --product-id=ID para uno específico.</info>');
         }
 
-        $output->writeln('');
+        if (!$csv) {
+            $output->writeln('');
+        }
         return Cli::RETURN_SUCCESS;
     }
 
@@ -186,6 +208,65 @@ class MissingPhotosCommand extends Command
         } else {
             $output->writeln('  <error>Hay colores sin fotos asignadas.</error>');
         }
+    }
+
+    /**
+     * CSV output mode: one row per product+color combination without photos.
+     * Output is clean CSV (no Symfony formatting) for easy redirect to file.
+     */
+    private function checkAllCsv(OutputInterface $output, ?int $filterProductId = null): void
+    {
+        $collection = $this->productCollectionFactory->create();
+        $collection->addAttributeToFilter('type_id', Configurable::TYPE_CODE);
+        $collection->addAttributeToSelect(['name', 'sku']);
+
+        if ($filterProductId !== null) {
+            $collection->addIdFilter($filterProductId);
+        }
+
+        // CSV header
+        $output->writeln($this->csvLine(['ID', 'SKU', 'Nombre', 'Color_ID', 'Color', 'Fotos']));
+
+        foreach ($collection as $product) {
+            $colorLabels = $this->colorMapping->getColorOptionLabels($product);
+            if (empty($colorLabels)) {
+                continue;
+            }
+
+            $mediaMapping = $this->colorMapping->getColorMediaMapping($product);
+
+            foreach ($colorLabels as $optionId => $label) {
+                $key = (string) $optionId;
+                $imgCount = isset($mediaMapping[$key]) ? count($mediaMapping[$key]['images'] ?? []) : 0;
+
+                if ($imgCount === 0) {
+                    $output->writeln($this->csvLine([
+                        $product->getId(),
+                        $product->getSku(),
+                        $product->getName() ?? '',
+                        $optionId,
+                        $label,
+                        $imgCount,
+                    ]));
+                }
+            }
+        }
+    }
+
+    /**
+     * Build a CSV line from an array of values.
+     */
+    private function csvLine(array $fields): string
+    {
+        $escaped = [];
+        foreach ($fields as $field) {
+            $value = (string) $field;
+            if (str_contains($value, ',') || str_contains($value, '"') || str_contains($value, "\n")) {
+                $value = '"' . str_replace('"', '""', $value) . '"';
+            }
+            $escaped[] = $value;
+        }
+        return implode(',', $escaped);
     }
 
     /**

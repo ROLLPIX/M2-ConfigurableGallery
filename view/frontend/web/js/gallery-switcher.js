@@ -50,6 +50,12 @@ define([], function () {
                 if (urlColor !== null) {
                     this._preselectSwatch(urlColor);
                 }
+            } else if (this.config.stockFilterEnabled) {
+                // No preselection resolved — still apply stock filter to exclude
+                // out-of-stock colors' images from the initial gallery view.
+                // switchColor(null) triggers _getAllMappedImages() which only includes
+                // colors present in the (already stock-filtered) colorMapping.
+                this.switchColor(null, true);
             }
         },
 
