@@ -36,6 +36,8 @@ define([
 
     var HIDDEN_CLASS = 'rp-cg-hidden';
     var LOG_PREFIX = '[RollpixCG Adapter]';
+    // Dot selectors: slider layout uses .rp-slider-dot, carousel/grid uses .rp-carousel-dot
+    var DOT_SELECTOR = '.rp-slider-dot, .rp-carousel-dot';
 
     /**
      * @param {Object} gallerySwitcher - GallerySwitcher instance
@@ -205,7 +207,7 @@ define([
                 thumbs: $thumbs.length,
                 visibleCount: visibleIndexes.length,
                 visibleIndexes: visibleIndexes,
-                dotsInDom: $gallery.find('.rp-slider-dot').length
+                dotsInDom: $gallery.find(DOT_SELECTOR).length
             });
 
             // Proactively hide carousel dots beyond visible count.
@@ -376,7 +378,8 @@ define([
          * and navigate correctly).
          */
         _updateSliderState: function ($gallery, $items, $thumbs, visibleIndexes) {
-            var $dots = $gallery.find('.rp-slider-dot');
+            var $dots = $gallery.find(DOT_SELECTOR);
+            var dotActive = this._dotActiveClass($dots);
             var allVisible = (visibleIndexes.length === $items.length);
 
             // Toggle dot visibility
@@ -407,9 +410,9 @@ define([
                 $items.eq(firstIdx).css({display: 'block', opacity: '1'});
 
                 // Update active dot
-                $dots.removeClass('rp-dot-active');
+                $dots.removeClass(dotActive);
                 if (firstIdx < $dots.length) {
-                    $dots.eq(firstIdx).addClass('rp-dot-active');
+                    $dots.eq(firstIdx).addClass(dotActive);
                 }
 
                 // Update active thumbnail
@@ -490,7 +493,7 @@ define([
             var domCount = $items.length;
             var visCount = visibleIndexes.length;
             var allVisible = (visCount >= domCount);
-            var $existingDots = $gallery.find('.rp-slider-dot');
+            var $existingDots = $gallery.find(DOT_SELECTOR);
 
             console.log(LOG_PREFIX, '_filterSliderBySwap', {
                 domCount: domCount,
@@ -585,7 +588,8 @@ define([
 
             // Update dots: show 0..N-1, hide the rest.
             // Direct toggle handles dots that already exist in the DOM:
-            var $dots = $gallery.find('.rp-slider-dot');
+            var $dots = $gallery.find(DOT_SELECTOR);
+            var dotActive = this._dotActiveClass($dots);
 
             $dots.each(function (idx) {
                 $(this).toggleClass(HIDDEN_CLASS, idx >= visCount);
@@ -597,9 +601,9 @@ define([
             this._setCarouselFilterCSS(visCount, domCount, false);
 
             // Activate first slide
-            $dots.removeClass('rp-dot-active');
+            $dots.removeClass(dotActive);
             if ($dots.length > 0) {
-                $dots.eq(0).addClass('rp-dot-active');
+                $dots.eq(0).addClass(dotActive);
             }
 
             $thumbs.removeClass('rp-thumbnail-active');
@@ -630,46 +634,6 @@ define([
                 }, 350);
             });
 
-            // --- DOM scan: find actual dot/pagination elements ---
-            var scanGallery = $gallery;
-            setTimeout(function () {
-                var results = [];
-                // Search inside gallery for any dot/bullet/pagination/indicator class
-                scanGallery.find('*').each(function () {
-                    var cls = (this.className || '').toString();
-                    var lower = cls.toLowerCase();
-                    if (lower.indexOf('dot') >= 0 || lower.indexOf('bullet') >= 0 ||
-                        lower.indexOf('pag') >= 0 || lower.indexOf('indic') >= 0) {
-                        results.push({tag: this.tagName, class: cls.substring(0, 120), children: this.children.length});
-                    }
-                });
-                // Find containers with exactly 6 children (matching 6 gallery items = 6 dots)
-                scanGallery.find('*').each(function () {
-                    if (this.children.length === 6) {
-                        results.push({
-                            note: '6-child-container',
-                            tag: this.tagName,
-                            class: (this.className || '').toString().substring(0, 120),
-                            childTag: this.children[0] ? this.children[0].tagName : '?',
-                            childClass: this.children[0] ? (this.children[0].className || '').toString().substring(0, 80) : '?'
-                        });
-                    }
-                });
-                // Also search OUTSIDE gallery (dots might be a sibling element)
-                var parent = scanGallery.parent();
-                if (parent.length) {
-                    parent.find('*').each(function () {
-                        var cls = (this.className || '').toString();
-                        var lower = cls.toLowerCase();
-                        if ((lower.indexOf('dot') >= 0 || lower.indexOf('bullet') >= 0 ||
-                             lower.indexOf('pag') >= 0 || lower.indexOf('indic') >= 0) &&
-                            !$.contains(scanGallery[0], this)) {
-                            results.push({note: 'OUTSIDE-gallery', tag: this.tagName, class: cls.substring(0, 120)});
-                        }
-                    });
-                }
-                console.log(LOG_PREFIX, 'DOM scan for dots (2s after filter):', JSON.stringify(results, null, 2));
-            }, 2000);
         },
 
         /**
@@ -718,11 +682,12 @@ define([
             });
 
             // Restore dots, arrows, remove swipe guard
-            var $dots = $gallery.find('.rp-slider-dot');
-            $dots.removeClass(HIDDEN_CLASS).removeClass('rp-dot-active');
+            var $dots = $gallery.find(DOT_SELECTOR);
+            var dotActive = this._dotActiveClass($dots);
+            $dots.removeClass(HIDDEN_CLASS).removeClass(dotActive);
 
             if ($dots.length > 0) {
-                $dots.eq(0).addClass('rp-dot-active');
+                $dots.eq(0).addClass(dotActive);
             }
 
             $gallery.find('.rp-slider-prev, .rp-slider-next').removeClass(HIDDEN_CLASS);
@@ -986,7 +951,7 @@ define([
                     isSlider: this._isSlider,
                     classes: $gallery.attr('class'),
                     items: $gallery.find('.rp-gallery-item').length,
-                    dots: $gallery.find('.rp-slider-dot').length
+                    dots: $gallery.find(DOT_SELECTOR).length
                 });
                 return $gallery;
             }
@@ -1095,6 +1060,17 @@ define([
         },
 
         /**
+         * Get the CSS class used for the active dot state.
+         * Slider dots use 'rp-dot-active', carousel dots use 'active'.
+         */
+        _dotActiveClass: function ($dots) {
+            if ($dots.length > 0 && $dots.first().hasClass('rp-carousel-dot')) {
+                return 'active';
+            }
+            return 'rp-dot-active';
+        },
+
+        /**
          * Inject a dynamic CSS rule that hides carousel dots (and extras)
          * beyond the visible count using :nth-child. This is timing-proof:
          * CSS rules auto-apply to DOM elements created AFTER injection,
@@ -1115,8 +1091,10 @@ define([
             }
 
             var n = visCount + 1; // nth-child is 1-based
+            // Target both slider dots (.rp-slider-dots) and carousel dots (.rp-carousel-indicators)
             var css =
-                '[data-role="rp-gallery"] .rp-slider-dots>:nth-child(n+' + n + '){display:none!important}';
+                '[data-role="rp-gallery"] .rp-slider-dots>:nth-child(n+' + n + '){display:none!important}' +
+                '[data-role="rp-gallery"] .rp-carousel-indicators>:nth-child(n+' + n + '){display:none!important}';
 
             if (!dotsOnly) {
                 css +=
