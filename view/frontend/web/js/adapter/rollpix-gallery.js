@@ -41,7 +41,6 @@ define([
      * @param {Object} gallerySwitcher - GallerySwitcher instance
      */
     function RollpixGalleryAdapter(gallerySwitcher) {
-        console.warn(LOG_PREFIX, 'Constructor called');
         this.switcher = gallerySwitcher;
         this.$gallery = null;
         this._isSlider = false;
@@ -51,7 +50,6 @@ define([
         this._swapRetries = 0;
         this._injectStyles();
         this._bindEvents();
-        console.warn(LOG_PREFIX, 'Constructor completed, events bound');
     }
 
     RollpixGalleryAdapter.prototype = {
@@ -128,17 +126,7 @@ define([
             var config = window.rollpixGalleryConfig || {};
             var $items = $gallery.find('.rp-gallery-item');
 
-            // Diagnostic logging
-            console.warn(LOG_PREFIX, 'Filter:', {
-                colorOptionId: colorOptionId,
-                filteredCount: images.length,
-                galleryImagesCount: allImages.length,
-                domItemsCount: $items.length,
-                adapter: config.galleryAdapter
-            });
-
             if (!allImages.length) {
-                console.warn(LOG_PREFIX, 'window.rollpixGalleryImages is empty — cannot filter');
                 return;
             }
 
@@ -147,10 +135,6 @@ define([
             // This bypasses any reference/value_id matching issues.
             var visibleSet = this._computeVisibleFromConfig(allImages, colorOptionId, config);
             var matchCount = this._countKeys(visibleSet);
-
-            if (matchCount > 0) {
-                console.warn(LOG_PREFIX, 'Strategy 1 (colorMapping):', matchCount, 'matches');
-            }
 
             // --- Strategy 2: Reference matching (fallback) ---
             if (matchCount === 0 && images.length > 0) {
@@ -164,9 +148,6 @@ define([
                     }
                 }
                 matchCount = this._countKeys(visibleSet);
-                if (matchCount > 0) {
-                    console.warn(LOG_PREFIX, 'Strategy 2 (reference):', matchCount, 'matches');
-                }
             }
 
             // --- Strategy 3: value_id matching (last resort) ---
@@ -187,21 +168,6 @@ define([
                     }
                 }
                 matchCount = this._countKeys(visibleSet);
-                if (matchCount > 0) {
-                    console.warn(LOG_PREFIX, 'Strategy 3 (value_id):', matchCount, 'matches');
-                }
-            }
-
-            if (matchCount === 0) {
-                // Log diagnostic info to help debug
-                var sampleImage = allImages[0] || {};
-                console.warn(LOG_PREFIX, 'No matches found. Sample image data:', {
-                    value_id: sampleImage.value_id,
-                    valueId: sampleImage.valueId,
-                    associatedAttributes: sampleImage.associatedAttributes,
-                    img: sampleImage.img ? sampleImage.img.substring(0, 80) : null
-                });
-                console.warn(LOG_PREFIX, 'Config colorMapping keys:', Object.keys(config.colorMapping || {}));
             }
 
             // Compute visible indices from visibleSet
@@ -216,19 +182,12 @@ define([
 
             // Safety: never hide ALL items
             if (visibleIndexes.length === 0 && $items.length > 0) {
-                console.warn(LOG_PREFIX, 'Safety guard: restoring all items (0 visible)');
                 return;
             }
 
-            // Slider: swap image sources instead of CSS hiding.
+            // Carousel/slider: swap image sources instead of CSS hiding.
             // CSS hiding creates gaps in the carousel and conflicts with the
-            // slider's closure-private state, resulting in blank slides.
-            console.warn(LOG_PREFIX, 'Layout branch:', {
-                isSlider: this._isSlider,
-                visibleCount: visibleIndexes.length,
-                totalItems: $items.length
-            });
-
+            // carousel's closure-private state, resulting in blank slides.
             if (this._isSlider) {
                 this._filterSliderBySwap($gallery, $items, $thumbs, visibleIndexes);
                 return;
@@ -496,18 +455,6 @@ define([
             var visCount = visibleIndexes.length;
             var allVisible = (visCount >= domCount);
 
-            // Diagnostic: log entry and key values
-            console.warn(LOG_PREFIX, '_filterSliderBySwap:', {
-                domCount: domCount,
-                visCount: visCount,
-                allVisible: allVisible,
-                visibleIndexes: visibleIndexes,
-                isSlider: this._isSlider,
-                hasFilterState: !!this._filterState,
-                thumbCount: $thumbs.length,
-                firstItemHtml: $items.eq(0).prop('tagName') + '>' + $items.eq(0).find('img').length + ' imgs'
-            });
-
             // Store original DOM state on first filter call
             if (!this._filterState) {
                 this._filterState = {items: [], thumbs: []};
@@ -530,14 +477,6 @@ define([
                     });
                 });
 
-                console.warn(LOG_PREFIX, 'Stored filterState:', {
-                    itemSrcs: this._filterState.items.map(function (it) {
-                        return it.src.substring(it.src.lastIndexOf('/') + 1);
-                    }),
-                    thumbSrcs: this._filterState.thumbs.map(function (th) {
-                        return th.src.substring(th.src.lastIndexOf('/') + 1);
-                    })
-                });
             }
 
             // All visible → restore original state
@@ -599,16 +538,6 @@ define([
                     }
                 }
             }
-
-            // Diagnostic: log actual DOM state after swap
-            console.warn(LOG_PREFIX, 'After swap:', {
-                swappedCount: visibleItemSources.length,
-                hiddenCount: domCount - visibleItemSources.length,
-                firstImgSrc: $items.eq(0).find('img').first().attr('src'),
-                firstImgSrcShort: ($items.eq(0).find('img').first().attr('src') || '').substring(
-                    ($items.eq(0).find('img').first().attr('src') || '').lastIndexOf('/') + 1
-                )
-            });
 
             // Update dots: show 0..N-1, hide the rest
             var $dots = $gallery.find('.rp-slider-dot');
@@ -942,26 +871,31 @@ define([
          */
         _getGallery: function () {
             if (this.$gallery) {
-                // Re-check slider class on every access — the Rollpix Gallery
-                // may apply rp-layout-slider after initial DOM render (e.g.,
+                // Re-check carousel state on every access — the Rollpix Gallery
+                // may apply carousel classes after initial DOM render (e.g.,
                 // responsive layout switch via media query or JS init timing).
-                this._isSlider = this.$gallery.hasClass('rp-layout-slider');
+                this._isSlider = this._detectCarousel(this.$gallery);
                 return this.$gallery;
             }
 
             var $gallery = $('[data-role="rp-gallery"]');
             if ($gallery.length && $gallery.find('.rp-gallery-item').length > 0) {
                 this.$gallery = $gallery;
-                this._isSlider = $gallery.hasClass('rp-layout-slider');
-                console.warn(LOG_PREFIX, 'Gallery found:', {
-                    isSlider: this._isSlider,
-                    classes: $gallery.attr('class'),
-                    items: $gallery.find('.rp-gallery-item').length
-                });
+                this._isSlider = this._detectCarousel($gallery);
                 return $gallery;
             }
 
             return null;
+        },
+
+        /**
+         * Detect if gallery is running as a carousel/slider.
+         * Checks for both explicit slider layout AND grid-with-carousel mode
+         * (mobile grid becomes a swipeable carousel with rp-carousel-active).
+         */
+        _detectCarousel: function ($gallery) {
+            return $gallery.hasClass('rp-layout-slider')
+                || $gallery.hasClass('rp-carousel-active');
         }
     };
 

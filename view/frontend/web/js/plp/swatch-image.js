@@ -16,17 +16,12 @@ define([
 ], function ($) {
     'use strict';
 
-    var LOG = '[RollpixCG PLP]';
-
     return function (config) {
         var plpConfig = (config && config.rollpixPlpConfig) || {};
 
         if ($.isEmptyObject(plpConfig)) {
-            console.warn(LOG, 'No rollpixPlpConfig data — swatch-image disabled');
             return;
         }
-
-        console.warn(LOG, 'swatch-image loaded,', Object.keys(plpConfig).length, 'products');
 
         /**
          * Get the product ID from a swatch element.

@@ -16,11 +16,8 @@ define([
         var plpConfig = (config && config.rollpixPlpConfig) || {};
 
         if ($.isEmptyObject(plpConfig)) {
-            console.warn('[RollpixCG PLP] No rollpixPlpConfig data — imageflip-compat disabled');
             return;
         }
-
-        console.warn('[RollpixCG PLP] imageflip-compat loaded,', Object.keys(plpConfig).length, 'products');
 
         /**
          * Update flip image for a product after swatch change.
