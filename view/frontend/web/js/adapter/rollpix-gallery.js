@@ -41,6 +41,7 @@ define([
      * @param {Object} gallerySwitcher - GallerySwitcher instance
      */
     function RollpixGalleryAdapter(gallerySwitcher) {
+        console.warn(LOG_PREFIX, 'Constructor called');
         this.switcher = gallerySwitcher;
         this.$gallery = null;
         this._isSlider = false;
@@ -50,6 +51,7 @@ define([
         this._swapRetries = 0;
         this._injectStyles();
         this._bindEvents();
+        console.warn(LOG_PREFIX, 'Constructor completed, events bound');
     }
 
     RollpixGalleryAdapter.prototype = {
@@ -221,6 +223,12 @@ define([
             // Slider: swap image sources instead of CSS hiding.
             // CSS hiding creates gaps in the carousel and conflicts with the
             // slider's closure-private state, resulting in blank slides.
+            console.warn(LOG_PREFIX, 'Layout branch:', {
+                isSlider: this._isSlider,
+                visibleCount: visibleIndexes.length,
+                totalItems: $items.length
+            });
+
             if (this._isSlider) {
                 this._filterSliderBySwap($gallery, $items, $thumbs, visibleIndexes);
                 return;
@@ -488,6 +496,18 @@ define([
             var visCount = visibleIndexes.length;
             var allVisible = (visCount >= domCount);
 
+            // Diagnostic: log entry and key values
+            console.warn(LOG_PREFIX, '_filterSliderBySwap:', {
+                domCount: domCount,
+                visCount: visCount,
+                allVisible: allVisible,
+                visibleIndexes: visibleIndexes,
+                isSlider: this._isSlider,
+                hasFilterState: !!this._filterState,
+                thumbCount: $thumbs.length,
+                firstItemHtml: $items.eq(0).prop('tagName') + '>' + $items.eq(0).find('img').length + ' imgs'
+            });
+
             // Store original DOM state on first filter call
             if (!this._filterState) {
                 this._filterState = {items: [], thumbs: []};
@@ -508,6 +528,15 @@ define([
                     self._filterState.thumbs.push({
                         src: $img.attr('src') || ''
                     });
+                });
+
+                console.warn(LOG_PREFIX, 'Stored filterState:', {
+                    itemSrcs: this._filterState.items.map(function (it) {
+                        return it.src.substring(it.src.lastIndexOf('/') + 1);
+                    }),
+                    thumbSrcs: this._filterState.thumbs.map(function (th) {
+                        return th.src.substring(th.src.lastIndexOf('/') + 1);
+                    })
                 });
             }
 
@@ -570,6 +599,16 @@ define([
                     }
                 }
             }
+
+            // Diagnostic: log actual DOM state after swap
+            console.warn(LOG_PREFIX, 'After swap:', {
+                swappedCount: visibleItemSources.length,
+                hiddenCount: domCount - visibleItemSources.length,
+                firstImgSrc: $items.eq(0).find('img').first().attr('src'),
+                firstImgSrcShort: ($items.eq(0).find('img').first().attr('src') || '').substring(
+                    ($items.eq(0).find('img').first().attr('src') || '').lastIndexOf('/') + 1
+                )
+            });
 
             // Update dots: show 0..N-1, hide the rest
             var $dots = $gallery.find('.rp-slider-dot');
@@ -903,6 +942,10 @@ define([
          */
         _getGallery: function () {
             if (this.$gallery) {
+                // Re-check slider class on every access — the Rollpix Gallery
+                // may apply rp-layout-slider after initial DOM render (e.g.,
+                // responsive layout switch via media query or JS init timing).
+                this._isSlider = this.$gallery.hasClass('rp-layout-slider');
                 return this.$gallery;
             }
 
@@ -910,6 +953,11 @@ define([
             if ($gallery.length && $gallery.find('.rp-gallery-item').length > 0) {
                 this.$gallery = $gallery;
                 this._isSlider = $gallery.hasClass('rp-layout-slider');
+                console.warn(LOG_PREFIX, 'Gallery found:', {
+                    isSlider: this._isSlider,
+                    classes: $gallery.attr('class'),
+                    items: $gallery.find('.rp-gallery-item').length
+                });
                 return $gallery;
             }
 

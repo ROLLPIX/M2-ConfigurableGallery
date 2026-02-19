@@ -40,28 +40,37 @@ define([
              * waits for the gallery:loaded event or retries with a timeout.
              */
             _initRollpixGallery: function () {
+                console.warn('[RollpixCG Mixin] _initRollpixGallery called, retry #' + this._rollpixInitRetries + ', initialized=' + this._rollpixInitialized);
+
                 if (this._rollpixInitialized) {
+                    console.warn('[RollpixCG Mixin] Already initialized, skipping');
                     return;
                 }
 
                 var rollpixConfig = this._getRollpixConfig();
+                console.warn('[RollpixCG Mixin] Config:', rollpixConfig ? 'found (enabled=' + rollpixConfig.enabled + ', adapter=' + rollpixConfig.galleryAdapter + ')' : 'NULL');
                 if (!rollpixConfig || !rollpixConfig.enabled) {
+                    console.warn('[RollpixCG Mixin] No config or not enabled, aborting');
                     return;
                 }
 
                 var galleryImages = this._getRollpixGalleryImages();
+                console.warn('[RollpixCG Mixin] Gallery images:', galleryImages ? galleryImages.length : 'NULL');
 
                 if (!galleryImages || galleryImages.length === 0) {
                     // Gallery images not available yet — defer initialization
                     if (this._rollpixInitRetries < 10) {
                         this._rollpixInitRetries++;
+                        console.warn('[RollpixCG Mixin] No images yet, retry #' + this._rollpixInitRetries + '/10');
                         var self = this;
 
                         // Listen for Magento gallery:loaded event on first retry
                         if (this._rollpixInitRetries === 1) {
                             var $gallery = $('[data-gallery-role="gallery-placeholder"]');
+                            console.warn('[RollpixCG Mixin] gallery-placeholder found:', $gallery.length > 0);
                             if ($gallery.length) {
                                 $gallery.on('gallery:loaded', function () {
+                                    console.warn('[RollpixCG Mixin] gallery:loaded event fired');
                                     self._initRollpixGallery();
                                 });
                             }
@@ -71,22 +80,37 @@ define([
                         setTimeout(function () {
                             self._initRollpixGallery();
                         }, 300);
+                    } else {
+                        console.warn('[RollpixCG Mixin] Max retries (10) exhausted, giving up');
                     }
                     return;
                 }
 
-                this._rollpixSwitcher = new GallerySwitcher(rollpixConfig, galleryImages);
+                console.warn('[RollpixCG Mixin] Creating GallerySwitcher...');
+                try {
+                    this._rollpixSwitcher = new GallerySwitcher(rollpixConfig, galleryImages);
+                } catch (e) {
+                    console.warn('[RollpixCG Mixin] ERROR creating GallerySwitcher:', e.message, e.stack);
+                    return;
+                }
 
                 // Select adapter based on galleryAdapter config (auto-detected by backend)
                 var adapterType = rollpixConfig.galleryAdapter || 'fotorama';
-                if (adapterType === 'rollpix') {
-                    this._rollpixAdapter = new RollpixGalleryAdapter(this._rollpixSwitcher);
-                } else {
-                    this._rollpixAdapter = new FotoramaAdapter(this._rollpixSwitcher);
+                console.warn('[RollpixCG Mixin] Creating adapter: ' + adapterType);
+                try {
+                    if (adapterType === 'rollpix') {
+                        this._rollpixAdapter = new RollpixGalleryAdapter(this._rollpixSwitcher);
+                    } else {
+                        this._rollpixAdapter = new FotoramaAdapter(this._rollpixSwitcher);
+                    }
+                } catch (e) {
+                    console.warn('[RollpixCG Mixin] ERROR creating adapter:', e.message, e.stack);
+                    return;
                 }
 
                 this._rollpixSwitcher.init();
                 this._rollpixInitialized = true;
+                console.warn('[RollpixCG Mixin] Initialization COMPLETE, adapter=' + adapterType);
 
                 // Ensure gallery is filtered once Fotorama is ready.
                 // gallery:loaded may have already fired before this code runs
