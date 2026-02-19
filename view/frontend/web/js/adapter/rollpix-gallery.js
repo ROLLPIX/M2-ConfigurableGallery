@@ -48,6 +48,8 @@ define([
         this._originalState = null;
         this._filterState = null;
         this._swapRetries = 0;
+        this._lastFilterArgs = null;
+        this._carouselObserver = null;
         this._injectStyles();
         this._bindEvents();
     }
@@ -74,6 +76,11 @@ define([
             var self = this;
             document.addEventListener('rollpix:gallery:filter', function (event) {
                 var detail = event.detail || {};
+                self._lastFilterArgs = {
+                    images: detail.images,
+                    isInitial: detail.isInitial,
+                    colorOptionId: detail.colorOptionId
+                };
                 self._updateGallery(detail.images, detail.isInitial, detail.colorOptionId);
             });
         },
@@ -202,6 +209,11 @@ define([
                 }
             });
             this._updateNonSliderState($gallery, $thumbs, visibleIndexes);
+
+            // Watch for carousel activation — the gallery may transition to
+            // carousel mode after our filter runs (responsive mobile layout).
+            // When that happens, re-apply with the swap strategy.
+            this._watchForCarouselActivation();
         },
 
         /**
@@ -886,6 +898,86 @@ define([
             }
 
             return null;
+        },
+
+        /**
+         * Watch for carousel activation via MutationObserver.
+         * When the gallery transitions to carousel mode (rp-carousel-active added
+         * by Rollpix Product Gallery after responsive init), re-apply the last
+         * filter using the swap strategy instead of CSS hide/show.
+         */
+        _watchForCarouselActivation: function () {
+            // Already watching or already carousel
+            if (this._carouselObserver || this._isSlider || !this.$gallery) {
+                return;
+            }
+
+            if (!window.MutationObserver) {
+                // Fallback: poll for carousel activation
+                this._pollForCarousel();
+                return;
+            }
+
+            var self = this;
+            this._carouselObserver = new MutationObserver(function () {
+                if (self._detectCarousel(self.$gallery)) {
+                    self._carouselObserver.disconnect();
+                    self._carouselObserver = null;
+                    self._isSlider = true;
+                    self._reapplyLastFilter();
+                }
+            });
+
+            this._carouselObserver.observe(this.$gallery[0], {
+                attributes: true,
+                attributeFilter: ['class']
+            });
+
+            // Safety timeout: stop watching after 10 seconds
+            var observer = this._carouselObserver;
+            setTimeout(function () {
+                if (observer) {
+                    observer.disconnect();
+                }
+                if (self._carouselObserver === observer) {
+                    self._carouselObserver = null;
+                }
+            }, 10000);
+        },
+
+        /**
+         * Fallback polling for carousel activation (no MutationObserver).
+         */
+        _pollForCarousel: function () {
+            var self = this;
+            var attempts = 0;
+
+            var poll = function () {
+                attempts++;
+                if (self._detectCarousel(self.$gallery)) {
+                    self._isSlider = true;
+                    self._reapplyLastFilter();
+                    return;
+                }
+                if (attempts < 50) {
+                    setTimeout(poll, 200);
+                }
+            };
+            setTimeout(poll, 200);
+        },
+
+        /**
+         * Re-apply the last filter with current _isSlider state.
+         * Called when carousel activates after a non-slider filter was applied.
+         */
+        _reapplyLastFilter: function () {
+            if (!this._lastFilterArgs) {
+                return;
+            }
+            // Reset filter state so swap strategy stores fresh original sources
+            this._filterState = null;
+            var args = this._lastFilterArgs;
+            this._updateGallery(args.images, args.isInitial, args.colorOptionId);
         },
 
         /**
