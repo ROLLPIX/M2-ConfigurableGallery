@@ -437,9 +437,11 @@ define([
             // Swipe guard: after touch interaction on mobile, the slider may navigate
             // to a hidden slide. Detect this and redirect to the nearest visible slide.
             var self = this;
+            var guardGallery2 = $gallery;
             $gallery.off('.rpCgFilter').on('touchend.rpCgFilter', function () {
                 setTimeout(function () {
-                    self._ensureVisibleSlide($items, $dots, $thumbs, visibleIndexes);
+                    var $liveDots = guardGallery2.find(DOT_SELECTOR);
+                    self._ensureVisibleSlide($items, $liveDots, $thumbs, visibleIndexes, visibleIndexes.length);
                 }, 350);
             });
         },
@@ -448,13 +450,34 @@ define([
          * After a swipe, check if the slider landed on a hidden slide
          * and redirect to the nearest visible one.
          */
-        _ensureVisibleSlide: function ($items, $dots, $thumbs, visibleIndexes) {
+        _ensureVisibleSlide: function ($items, $dots, $thumbs, visibleIndexes, visCount) {
             if (!visibleIndexes.length) {
                 return;
             }
 
-            // Find which item the slider is currently showing
-            // (the slider sets inline display:block on the active item)
+            // Strategy 1: Check active dot index (carousel mode).
+            // Carousel uses transforms on track, not display:block on items,
+            // so we detect the current slide via the active dot class.
+            var activeDotIdx = -1;
+            $dots.each(function (idx) {
+                if ($(this).hasClass('active') || $(this).hasClass('rp-dot-active')) {
+                    activeDotIdx = idx;
+                    return false;
+                }
+            });
+
+            if (activeDotIdx >= 0) {
+                // Swap strategy packs visible items at positions 0..visCount-1
+                if (activeDotIdx < (visCount || visibleIndexes.length)) {
+                    return; // Current slide is within visible range
+                }
+                // Outside visible range — redirect to first slide
+                $dots.eq(0).trigger('click');
+                return;
+            }
+
+            // Strategy 2: Check inline display (slider mode where the slider
+            // sets display:block on the active item).
             var foundVisible = false;
             $items.each(function () {
                 if (this.style.display === 'block' && !$(this).hasClass(HIDDEN_CLASS)) {
@@ -464,7 +487,6 @@ define([
             });
 
             if (!foundVisible) {
-                // Slider is on a hidden slide — navigate to first visible
                 var target = visibleIndexes[0];
                 if (target < $dots.length) {
                     $dots.eq(target).trigger('click');
@@ -620,8 +642,12 @@ define([
             // hidden items, so arrow navigation would reach blank slides
             $gallery.find('.rp-slider-prev, .rp-slider-next').addClass(HIDDEN_CLASS);
 
-            // Swipe guard: if mobile swipe lands on a hidden slide, redirect
+            // Swipe guard: if mobile swipe lands on a hidden slide, redirect.
+            // Re-query dots on each touchend — they may not have existed
+            // when the filter ran (dotsInDom was 0 at filter time).
             var self2 = this;
+            var guardGallery = $gallery;
+            var guardVisCount = visCount;
             var guardIndexes = [];
 
             for (var g = 0; g < visCount; g++) {
@@ -630,7 +656,8 @@ define([
 
             $gallery.off('.rpCgFilter').on('touchend.rpCgFilter', function () {
                 setTimeout(function () {
-                    self2._ensureVisibleSlide($items, $dots, $thumbs, guardIndexes);
+                    var $liveDots = guardGallery.find(DOT_SELECTOR);
+                    self2._ensureVisibleSlide($items, $liveDots, $thumbs, guardIndexes, guardVisCount);
                 }, 350);
             });
 
