@@ -33,6 +33,7 @@ class MigrateCommand extends Command
     private const OPTION_ALL = 'all';
     private const OPTION_DRY_RUN = 'dry-run';
     private const OPTION_CLEAN = 'clean';
+    private const OPTION_SORT = 'sort';
 
     public function __construct(
         private readonly Config $config,
@@ -79,6 +80,12 @@ class MigrateCommand extends Command
                 null,
                 InputOption::VALUE_NONE,
                 'Eliminar imágenes existentes del configurable antes de consolidar'
+            )
+            ->addOption(
+                self::OPTION_SORT,
+                null,
+                InputOption::VALUE_NONE,
+                'Ordenar imágenes agrupadas por color al consolidar'
             );
     }
 
@@ -95,6 +102,7 @@ class MigrateCommand extends Command
         $all = $input->getOption(self::OPTION_ALL);
         $dryRun = $input->getOption(self::OPTION_DRY_RUN);
         $clean = $input->getOption(self::OPTION_CLEAN);
+        $sort = $input->getOption(self::OPTION_SORT);
 
         if (!in_array($mode, ['diagnose', 'consolidate', 'auto-map'], true)) {
             $output->writeln('<error>Modo inválido. Use: diagnose, consolidate, o auto-map</error>');
@@ -129,7 +137,7 @@ class MigrateCommand extends Command
         foreach ($collection as $product) {
             match ($mode) {
                 'diagnose' => $this->modeDiagnose($product, $output),
-                'consolidate' => $this->modeConsolidate($product, $dryRun, $clean, $output),
+                'consolidate' => $this->modeConsolidate($product, $dryRun, $clean, $sort, $output),
                 'auto-map' => $this->modeAutoMap($product, $dryRun, $output),
             };
         }
@@ -232,6 +240,7 @@ class MigrateCommand extends Command
         Product $product,
         bool $dryRun,
         bool $clean,
+        bool $sort,
         OutputInterface $output
     ): void {
         $output->writeln(sprintf(
@@ -317,21 +326,44 @@ class MigrateCommand extends Command
             }
         }
 
+        // Sort images by color label alphabetically if --sort is active
+        if ($sort && !empty($imagesByColor)) {
+            $colorLabels = $this->colorMapping->getColorOptionLabels($product);
+            uksort($imagesByColor, function ($a, $b) use ($colorLabels) {
+                $labelA = mb_strtolower($colorLabels[$a] ?? '');
+                $labelB = mb_strtolower($colorLabels[$b] ?? '');
+                return strcmp($labelA, $labelB);
+            });
+            $output->writeln('  <info>Imágenes ordenadas por color (--sort)</info>');
+        }
+
         $totalImages = array_sum(array_map('count', $imagesByColor));
         $output->writeln(sprintf('  Imágenes únicas encontradas en simples: %d', $totalImages));
 
+        $position = 1;
+
         foreach ($imagesByColor as $optionId => $images) {
-            $output->writeln(sprintf('    Color %d: %d imágenes', $optionId, count($images)));
+            $colorLabel = '';
+            if ($sort) {
+                $colorLabels = $colorLabels ?? $this->colorMapping->getColorOptionLabels($product);
+                $colorLabel = $colorLabels[$optionId] ?? '';
+                $output->writeln(sprintf('    %s (ID %d): %d imágenes', $colorLabel, $optionId, count($images)));
+            } else {
+                $output->writeln(sprintf('    Color %d: %d imágenes', $optionId, count($images)));
+            }
 
             foreach ($images as $image) {
                 $associatedAttributes = sprintf('attribute%d-%d', $colorAttributeId, $optionId);
 
                 if ($dryRun) {
+                    $posInfo = $sort ? sprintf(' [pos %d]', $position) : '';
                     $output->writeln(sprintf(
-                        '      WOULD: link %s → configurable con %s',
+                        '      WOULD: link %s → configurable con %s%s',
                         $image['value'],
-                        $associatedAttributes
+                        $associatedAttributes,
+                        $posInfo
                     ));
+                    $position++;
                     continue;
                 }
 
@@ -352,7 +384,7 @@ class MigrateCommand extends Command
                         ]);
                     }
 
-                    // Set the associated_attributes on the parent's gallery value
+                    // Set the associated_attributes (and position if --sort) on the gallery value
                     $existingValue = $connection->fetchOne(
                         $connection->select()
                             ->from($galleryValueTable, ['record_id'])
@@ -360,19 +392,27 @@ class MigrateCommand extends Command
                             ->where('store_id = ?', 0)
                     );
 
+                    $updateData = ['associated_attributes' => $associatedAttributes];
+                    if ($sort) {
+                        $updateData['position'] = $position;
+                    }
+
                     if ($existingValue) {
                         $connection->update(
                             $galleryValueTable,
-                            ['associated_attributes' => $associatedAttributes],
+                            $updateData,
                             ['value_id = ?' => (int) $image['value_id'], 'store_id = ?' => 0]
                         );
                     }
 
+                    $posInfo = $sort ? sprintf(' [pos %d]', $position) : '';
                     $output->writeln(sprintf(
-                        '      LINKED %s → configurable con %s',
+                        '      LINKED %s → configurable con %s%s',
                         $image['value'],
-                        $associatedAttributes
+                        $associatedAttributes,
+                        $posInfo
                     ));
+                    $position++;
                 } catch (\Exception $e) {
                     $output->writeln(sprintf(
                         '      <error>ERROR: %s — %s</error>',

@@ -9,6 +9,7 @@ use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
 use Magento\Store\Model\StoreManagerInterface;
 use Magento\CatalogInventory\Api\StockRegistryInterface;
 use Magento\Framework\Module\Manager as ModuleManager;
+use Magento\Framework\ObjectManagerInterface;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -16,24 +17,23 @@ use Psr\Log\LoggerInterface;
  * For each color option_id, checks if at least one simple child with that color has is_salable = true.
  * Compatible with MSI (Multi Source Inventory) when available, falls back to legacy stock.
  *
- * MSI interfaces are injected as nullable via di.xml to avoid hard dependency.
- * When Magento_InventorySales is not installed, they will be null and legacy stock is used.
+ * MSI interfaces are resolved dynamically via ObjectManager at runtime to avoid
+ * hard dependency on Magento_InventorySales (standard Magento pattern for optional MSI deps).
  */
 class StockFilter
 {
-    /**
-     * @param object|null $areProductsSalable AreProductsSalableInterface (nullable, injected via di.xml)
-     * @param object|null $stockResolver StockResolverInterface (nullable, injected via di.xml)
-     */
+    private ?object $areProductsSalable = null;
+    private ?object $stockResolver = null;
+    private bool $msiResolved = false;
+
     public function __construct(
         private readonly Config $config,
         private readonly AttributeResolver $attributeResolver,
         private readonly ModuleManager $moduleManager,
         private readonly StoreManagerInterface $storeManager,
         private readonly StockRegistryInterface $stockRegistry,
-        private readonly LoggerInterface $logger,
-        private readonly ?object $areProductsSalable = null,
-        private readonly ?object $stockResolver = null
+        private readonly ObjectManagerInterface $objectManager,
+        private readonly LoggerInterface $logger
     ) {
     }
 
@@ -131,11 +131,8 @@ class StockFilter
     private function isChildSalable(Product $child, int|string|null $storeId): bool
     {
         try {
-            // Try MSI first if available and injected
-            if ($this->areProductsSalable !== null
-                && $this->stockResolver !== null
-                && $this->moduleManager->isEnabled('Magento_InventorySales')
-            ) {
+            $this->resolveMsi();
+            if ($this->areProductsSalable !== null && $this->stockResolver !== null) {
                 return $this->isChildSalableMsi($child, $storeId);
             }
         } catch (\Exception $e) {
@@ -148,6 +145,37 @@ class StockFilter
 
         // Legacy stock check
         return $this->isChildSalableLegacy($child);
+    }
+
+    /**
+     * Resolve MSI interfaces dynamically via ObjectManager.
+     * Only attempts resolution once; caches the result.
+     */
+    private function resolveMsi(): void
+    {
+        if ($this->msiResolved) {
+            return;
+        }
+        $this->msiResolved = true;
+
+        if (!$this->moduleManager->isEnabled('Magento_InventorySales')) {
+            return;
+        }
+
+        try {
+            $this->areProductsSalable = $this->objectManager->get(
+                \Magento\InventorySalesApi\Api\AreProductsSalableInterface::class
+            );
+            $this->stockResolver = $this->objectManager->get(
+                \Magento\InventorySalesApi\Api\StockResolverInterface::class
+            );
+        } catch (\Exception $e) {
+            $this->logger->debug('Rollpix ConfigurableGallery: Could not resolve MSI interfaces', [
+                'exception' => $e->getMessage(),
+            ]);
+            $this->areProductsSalable = null;
+            $this->stockResolver = null;
+        }
     }
 
     private function isChildSalableMsi(Product $child, int|string|null $storeId): bool
@@ -181,5 +209,61 @@ class StockFilter
             ]);
             return false;
         }
+    }
+
+    /**
+     * Get detailed stock info for all children of a configurable product.
+     * Used by DiagnoseCommand to display per-child stock details.
+     *
+     * @return array<int, array{sku: string, color_option_id: int|null, color_label: string, salable: bool, qty: float, method: string}>
+     */
+    public function getStockDetails(Product $product, array $colorLabels, int|string|null $storeId = null): array
+    {
+        if ($product->getTypeId() !== Configurable::TYPE_CODE) {
+            return [];
+        }
+
+        $colorAttributeCode = $this->attributeResolver->resolveForProduct($product, $storeId);
+        if ($colorAttributeCode === null) {
+            return [];
+        }
+
+        /** @var Configurable $typeInstance */
+        $typeInstance = $product->getTypeInstance();
+        $children = $typeInstance->getUsedProducts($product);
+        $details = [];
+
+        $this->resolveMsi();
+        $useMsi = $this->areProductsSalable !== null && $this->stockResolver !== null;
+
+        foreach ($children as $child) {
+            $colorValue = $child->getData($colorAttributeCode);
+            $colorOptionId = $colorValue !== null ? (int) $colorValue : null;
+            $colorLabel = $colorOptionId !== null && isset($colorLabels[$colorOptionId])
+                ? $colorLabels[$colorOptionId]
+                : '—';
+
+            $salable = $this->isChildSalable($child, $storeId);
+
+            // Get qty from legacy stock for display
+            $qty = 0;
+            try {
+                $stockItem = $this->stockRegistry->getStockItem($child->getId());
+                $qty = (float) $stockItem->getQty();
+            } catch (\Exception $e) {
+                // ignore
+            }
+
+            $details[] = [
+                'sku' => $child->getSku(),
+                'color_option_id' => $colorOptionId,
+                'color_label' => $colorLabel,
+                'salable' => $salable,
+                'qty' => $qty,
+                'method' => $useMsi ? 'MSI' : 'Legacy',
+            ];
+        }
+
+        return $details;
     }
 }

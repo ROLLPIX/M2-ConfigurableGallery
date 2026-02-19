@@ -198,7 +198,7 @@ class DiagnoseCommand extends Command
         // Stock status
         if ($this->config->isStockFilterEnabled()) {
             $colorsWithStock = $this->stockFilter->getColorsWithStock($product);
-            $output->writeln('  Estado de stock:');
+            $output->writeln('  Estado de stock por color:');
             foreach ($colorLabels as $optionId => $label) {
                 $hasStock = in_array($optionId, $colorsWithStock, true);
                 $output->writeln(sprintf(
@@ -206,6 +206,25 @@ class DiagnoseCommand extends Command
                     $label,
                     $hasStock ? '<info>Con stock</info>' : '<error>Sin stock</error>'
                 ));
+            }
+
+            // Per-child stock details
+            $stockDetails = $this->stockFilter->getStockDetails($product, $colorLabels);
+            if (!empty($stockDetails)) {
+                $output->writeln('');
+                $output->writeln('  <comment>Detalle de stock por hijo:</comment>');
+                $stockTable = new Table($output);
+                $stockTable->setHeaders(['SKU', 'Color', 'Qty', 'Salable', 'Método']);
+                foreach ($stockDetails as $detail) {
+                    $stockTable->addRow([
+                        $detail['sku'],
+                        $detail['color_label'],
+                        $detail['qty'],
+                        $detail['salable'] ? '<info>Sí</info>' : '<error>No</error>',
+                        $detail['method'],
+                    ]);
+                }
+                $stockTable->render();
             }
         }
 

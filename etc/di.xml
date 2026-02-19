@@ -26,18 +26,6 @@
                 sortOrder="10"/>
     </type>
 
-    <!--
-        StockFilter: inject MSI dependencies as nullable.
-        When Magento_InventorySales is not installed, these will be null
-        and the class falls back to legacy stock check.
-    -->
-    <type name="Rollpix\ConfigurableGallery\Model\StockFilter">
-        <arguments>
-            <argument name="areProductsSalable" xsi:type="null"/>
-            <argument name="stockResolver" xsi:type="null"/>
-        </arguments>
-    </type>
-
     <!-- Register CLI commands -->
     <type name="Magento\Framework\Console\CommandListInterface">
         <arguments>
@@ -53,6 +41,9 @@
                 </item>
                 <item name="rollpix_gallery_clean" xsi:type="object">
                     Rollpix\ConfigurableGallery\Console\Command\CleanCommand\Proxy
+                </item>
+                <item name="rollpix_gallery_missing_photos" xsi:type="object">
+                    Rollpix\ConfigurableGallery\Console\Command\MissingPhotosCommand\Proxy
                 </item>
             </argument>
         </arguments>
