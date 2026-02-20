@@ -127,9 +127,12 @@ class CartItemImagePlugin
         $colorKey = (string) $colorOptionId;
 
         if (isset($mediaMapping[$colorKey]) && !empty($mediaMapping[$colorKey]['images'])) {
-            $file = $mediaMapping[$colorKey]['images'][0]['file'] ?? null;
-            if ($file !== null) {
-                return $file;
+            // Find the first non-video image for cart thumbnail
+            foreach ($mediaMapping[$colorKey]['images'] as $imageEntry) {
+                $file = $imageEntry['file'] ?? null;
+                if ($file !== null && strtolower(pathinfo($file, PATHINFO_EXTENSION)) !== 'mp4') {
+                    return $file;
+                }
             }
         }
 

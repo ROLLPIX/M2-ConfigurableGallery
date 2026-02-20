@@ -39,6 +39,123 @@ define([
     // Dot selectors: slider layout uses .rp-slider-dot, carousel/grid uses .rp-carousel-dot
     var DOT_SELECTOR = '.rp-slider-dot, .rp-carousel-dot';
 
+    // ── Video-aware media helpers ──────────────────────────────────────
+
+    function _getItemMediaType($item) {
+        return $item.attr('data-media-type') === 'video' ? 'video' : 'image';
+    }
+
+    function _captureItemState($item) {
+        var mediaType = _getItemMediaType($item);
+
+        if (mediaType === 'video') {
+            var $video = $item.find('video').first();
+
+            return {
+                mediaType: 'video',
+                src: $video.find('source').attr('src') || '',
+                videoHtml: $video.length ? $video[0].outerHTML : '',
+                zoomSrc: '',
+                href: null
+            };
+        }
+
+        var $img = $item.find('img').first();
+
+        return {
+            mediaType: 'image',
+            src: $img.attr('src') || '',
+            zoomSrc: $img.attr('data-zoom-image') || '',
+            href: $item.is('a') ? ($item.attr('href') || '') : null,
+            videoHtml: ''
+        };
+    }
+
+    function _captureThumbState($thumb) {
+        var mediaType = $thumb.attr('data-media-type') === 'video' ? 'video' : 'image';
+
+        if (mediaType === 'video') {
+            return {mediaType: 'video', html: $thumb.html(), src: ''};
+        }
+
+        var $img = $thumb.find('img').first();
+
+        return {mediaType: 'image', src: $img.attr('src') || '', html: ''};
+    }
+
+    function _applyItemState($item, data) {
+        var currentType = _getItemMediaType($item);
+
+        if (data.mediaType === currentType) {
+            // Same-type swap: update sources in place
+            if (currentType === 'video') {
+                var $source = $item.find('video source').first();
+
+                if ($source.length) {
+                    $source.attr('src', data.src);
+                }
+
+                var video = $item.find('video')[0];
+
+                if (video) {
+                    video.load();
+                }
+            } else {
+                var $img = $item.find('img').first();
+
+                if ($img.length) {
+                    $img.attr('src', data.src);
+
+                    if (data.zoomSrc) {
+                        $img.attr('data-zoom-image', data.zoomSrc);
+                    }
+                }
+
+                if (data.href !== null && $item.is('a')) {
+                    $item.attr('href', data.href);
+                }
+            }
+        } else if (data.mediaType === 'video' && data.videoHtml) {
+            // Cross-type: convert image slot to video
+            $item.html(data.videoHtml);
+            $item.attr('data-media-type', 'video')
+                 .addClass('rp-gallery-video')
+                 .removeAttr('href');
+
+            var newVideo = $item.find('video')[0];
+
+            if (newVideo) {
+                newVideo.load();
+            }
+        } else {
+            // Cross-type: convert video slot to image
+            $item.html('<img src="' + data.src + '" alt="" loading="lazy"/>');
+            $item.find('img').attr('data-zoom-image', data.zoomSrc || data.src);
+            $item.attr('data-media-type', 'image')
+                 .removeClass('rp-gallery-video');
+        }
+    }
+
+    function _applyThumbState($thumb, data) {
+        var currentType = $thumb.attr('data-media-type') === 'video' ? 'video' : 'image';
+
+        if (data.mediaType === currentType) {
+            if (currentType !== 'video') {
+                var $img = $thumb.find('img').first();
+
+                if ($img.length) {
+                    $img.attr('src', data.src);
+                }
+            }
+        } else if (data.mediaType === 'video' && data.html) {
+            $thumb.html(data.html).attr('data-media-type', 'video');
+        } else {
+            $thumb.html('<img src="' + data.src + '" alt="" loading="lazy"/>').attr('data-media-type', 'image');
+        }
+    }
+
+    // ── End video helpers ──────────────────────────────────────────────
+
     /**
      * @param {Object} gallerySwitcher - GallerySwitcher instance
      */
@@ -530,20 +647,11 @@ define([
                 var self = this;
 
                 $items.each(function () {
-                    var $item = $(this);
-                    var $img = $item.find('img').first();
-                    self._filterState.items.push({
-                        src: $img.attr('src') || '',
-                        zoomSrc: $img.attr('data-zoom-image') || '',
-                        href: $item.is('a') ? ($item.attr('href') || '') : null
-                    });
+                    self._filterState.items.push(_captureItemState($(this)));
                 });
 
                 $thumbs.each(function () {
-                    var $img = $(this).find('img').first();
-                    self._filterState.thumbs.push({
-                        src: $img.attr('src') || ''
-                    });
+                    self._filterState.thumbs.push(_captureThumbState($(this)));
                 });
 
             }
@@ -573,31 +681,16 @@ define([
             $items.removeClass(HIDDEN_CLASS);
             $thumbs.removeClass(HIDDEN_CLASS);
 
-            // Pack visible images at positions 0..N-1, hide extras at the END
+            // Pack visible media at positions 0..N-1, hide extras at the END
             for (var i = 0; i < domCount; i++) {
                 var $item = $items.eq(i);
-                var $img = $item.find('img').first();
 
                 if (i < visibleItemSources.length) {
-                    var data = visibleItemSources[i];
-
-                    if ($img.length) {
-                        $img.attr('src', data.src);
-                        if (data.zoomSrc) {
-                            $img.attr('data-zoom-image', data.zoomSrc);
-                        }
-                    }
-                    if (data.href !== null && $item.is('a')) {
-                        $item.attr('href', data.href);
-                    }
+                    _applyItemState($item, visibleItemSources[i]);
 
                     // Update corresponding thumbnail
                     if (i < $thumbs.length && i < visibleThumbSources.length) {
-                        var $thumbImg = $thumbs.eq(i).find('img').first();
-
-                        if ($thumbImg.length) {
-                            $thumbImg.attr('src', visibleThumbSources[i].src);
-                        }
+                        _applyThumbState($thumbs.eq(i), visibleThumbSources[i]);
                     }
                 } else {
                     // Hide extra items at the end (no gaps in the middle)
@@ -674,24 +767,13 @@ define([
 
             var orig = this._filterState;
 
-            // Restore image sources
+            // Restore media sources (images and videos)
             $items.each(function (idx) {
                 var $item = $(this);
                 $item.removeClass(HIDDEN_CLASS);
 
                 if (idx < orig.items.length) {
-                    var data = orig.items[idx];
-                    var $img = $item.find('img').first();
-
-                    if ($img.length) {
-                        $img.attr('src', data.src);
-                        if (data.zoomSrc) {
-                            $img.attr('data-zoom-image', data.zoomSrc);
-                        }
-                    }
-                    if (data.href !== null && $item.is('a')) {
-                        $item.attr('href', data.href);
-                    }
+                    _applyItemState($item, orig.items[idx]);
                 }
             });
 
@@ -700,11 +782,7 @@ define([
                 $(this).removeClass(HIDDEN_CLASS);
 
                 if (idx < orig.thumbs.length) {
-                    var $img = $(this).find('img').first();
-
-                    if ($img.length) {
-                        $img.attr('src', orig.thumbs[idx].src);
-                    }
+                    _applyThumbState($(this), orig.thumbs[idx]);
                 }
             });
 
@@ -826,10 +904,24 @@ define([
             $items.removeClass(HIDDEN_CLASS);
             $thumbs.removeClass(HIDDEN_CLASS);
 
+            var imgIdx = 0; // separate index for image data (skip video slots)
+
             for (var i = 0; i < domCount; i++) {
-                if (i < newCount) {
-                    var newImg = validImages[i];
-                    var $item = $items.eq(i);
+                var $item = $items.eq(i);
+
+                // swapImages only receives image data (never video).
+                // Hide video items — they belong to the configurable parent,
+                // not the simple product being swapped in.
+                if (_getItemMediaType($item) === 'video') {
+                    $item.addClass(HIDDEN_CLASS);
+                    if (i < $thumbs.length) {
+                        $thumbs.eq(i).addClass(HIDDEN_CLASS);
+                    }
+                    continue;
+                }
+
+                if (imgIdx < newCount) {
+                    var newImg = validImages[imgIdx];
                     var $itemImg = $item.find('img').first();
 
                     // Update main image src
@@ -853,9 +945,10 @@ define([
                     }
 
                     visibleIndexes.push(i);
+                    imgIdx++;
                 } else {
                     // Hide extra DOM items when simple product has fewer images
-                    $items.eq(i).addClass(HIDDEN_CLASS);
+                    $item.addClass(HIDDEN_CLASS);
                     if (i < $thumbs.length) {
                         $thumbs.eq(i).addClass(HIDDEN_CLASS);
                     }
@@ -878,20 +971,11 @@ define([
             self._originalState = {items: [], thumbs: []};
 
             $items.each(function () {
-                var $item = $(this);
-                var $img = $item.find('img').first();
-                self._originalState.items.push({
-                    src: $img.attr('src') || '',
-                    zoomSrc: $img.attr('data-zoom-image') || '',
-                    href: $item.is('a') ? ($item.attr('href') || '') : null
-                });
+                self._originalState.items.push(_captureItemState($(this)));
             });
 
             $thumbs.each(function () {
-                var $img = $(this).find('img').first();
-                self._originalState.thumbs.push({
-                    src: $img.attr('src') || ''
-                });
+                self._originalState.thumbs.push(_captureThumbState($(this)));
             });
         },
 
@@ -910,18 +994,7 @@ define([
                 $item.removeClass(HIDDEN_CLASS);
 
                 if (idx < orig.items.length) {
-                    var data = orig.items[idx];
-                    var $img = $item.find('img').first();
-
-                    if ($img.length) {
-                        $img.attr('src', data.src);
-                        if (data.zoomSrc) {
-                            $img.attr('data-zoom-image', data.zoomSrc);
-                        }
-                    }
-                    if (data.href !== null && $item.is('a')) {
-                        $item.attr('href', data.href);
-                    }
+                    _applyItemState($item, orig.items[idx]);
                 }
             });
 
@@ -929,10 +1002,7 @@ define([
                 $(this).removeClass(HIDDEN_CLASS);
 
                 if (idx < orig.thumbs.length) {
-                    var $img = $(this).find('img').first();
-                    if ($img.length) {
-                        $img.attr('src', orig.thumbs[idx].src);
-                    }
+                    _applyThumbState($(this), orig.thumbs[idx]);
                 }
             });
 

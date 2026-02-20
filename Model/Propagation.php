@@ -208,10 +208,15 @@ class Propagation
             }
         }
 
-        // Add the image to the child via the media gallery
+        // Never assign image roles (image, small_image, thumbnail) to video files.
+        $assignRoles = [];
+        if (!$this->isVideoFile($file) && $this->shouldBeFirstImage($child)) {
+            $assignRoles = $roles;
+        }
+
         $child->addImageToMediaGallery(
             $absolutePath,
-            $this->shouldBeFirstImage($child) ? $roles : [],
+            $assignRoles,
             false, // move
             false  // exclude
         );
@@ -220,12 +225,29 @@ class Propagation
     }
 
     /**
-     * Check if this would be the first image on the child (to assign roles).
+     * Check if this would be the first non-video image on the child (to assign roles).
      */
     private function shouldBeFirstImage(Product $child): bool
     {
         $gallery = $child->getMediaGalleryEntries();
-        return empty($gallery);
+        if (empty($gallery)) {
+            return true;
+        }
+        // If the child only has videos so far, the next image should get the roles
+        foreach ($gallery as $entry) {
+            if (!$this->isVideoFile($entry->getFile() ?? '')) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Check if a file is a video (MP4).
+     */
+    private function isVideoFile(string $file): bool
+    {
+        return strtolower(pathinfo($file, PATHINFO_EXTENSION)) === 'mp4';
     }
 
     /**

@@ -13,6 +13,15 @@ define([
     'use strict';
 
     /**
+     * Detect if a gallery image entry is a local MP4 video.
+     */
+    function _isLocalVideo(img) {
+        var file = img.file || img.img || img.full || '';
+
+        return file.length > 4 && file.toLowerCase().slice(-4) === '.mp4';
+    }
+
+    /**
      * @param {Object} gallerySwitcher - GallerySwitcher instance
      * @param {jQuery} $galleryElement - The gallery container element
      */
@@ -122,9 +131,9 @@ define([
                 var img = images[i];
                 var item = {};
 
-                if (img.type === 'video' || img.media_type === 'external-video') {
-                    // Video entry
-                    item.videoUrl = img.videoUrl || img.video_url;
+                if (img.type === 'video' || img.media_type === 'external-video' || _isLocalVideo(img)) {
+                    // Video entry (external or local MP4)
+                    item.videoUrl = img.videoUrl || img.video_url || img.full || img.img;
                     item.img = img.img || img.full || img.thumb;
                     item.thumb = img.thumb || img.img;
                     item.caption = img.caption || '';

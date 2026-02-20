@@ -129,7 +129,7 @@ class ColorMapping
         foreach ($rows as $row) {
             $associatedAttributes = $row['associated_attributes'] ?? null;
             $mediaType = $row['media_type'] ?? 'image';
-            $isVideo = ($mediaType === 'external-video');
+            $isVideo = $this->isVideoEntry($mediaType, $row['value'] ?? '');
 
             $entry = [
                 'value_id' => (int) $row['value_id'],
@@ -194,6 +194,20 @@ class ColorMapping
         }
 
         return $optionIds;
+    }
+
+    /**
+     * Determine if a media gallery entry is a video.
+     * Recognizes external videos (media_type = 'external-video')
+     * and local MP4 files (uploaded with media_type = 'image').
+     */
+    private function isVideoEntry(string $mediaType, string $file): bool
+    {
+        if ($mediaType === 'external-video') {
+            return true;
+        }
+
+        return strtolower(pathinfo($file, PATHINFO_EXTENSION)) === 'mp4';
     }
 
     /**
