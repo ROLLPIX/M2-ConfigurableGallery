@@ -198,16 +198,10 @@ class ColorMapping
 
     /**
      * Determine if a media gallery entry is a video.
-     * Recognizes external videos (media_type = 'external-video')
-     * and local MP4 files (uploaded with media_type = 'image').
      */
     private function isVideoEntry(string $mediaType, string $file): bool
     {
-        if ($mediaType === 'external-video') {
-            return true;
-        }
-
-        return strtolower(pathinfo($file, PATHINFO_EXTENSION)) === 'mp4';
+        return $mediaType === 'external-video';
     }
 
     /**

@@ -208,9 +208,17 @@ class Propagation
             }
         }
 
-        // Never assign image roles (image, small_image, thumbnail) to video files.
+        // Skip video entries — propagation of external-video requires copying
+        // video metadata (catalog_product_entity_media_gallery_value_video) which
+        // is not yet supported. Only propagate images.
+        $mediaType = $imageData['media_type'] ?? 'image';
+        if ($mediaType === 'external-video') {
+            return false;
+        }
+
+        // Assign image roles to the first image on the child
         $assignRoles = [];
-        if (!$this->isVideoFile($file) && $this->shouldBeFirstImage($child)) {
+        if ($this->shouldBeFirstImage($child)) {
             $assignRoles = $roles;
         }
 
@@ -225,7 +233,7 @@ class Propagation
     }
 
     /**
-     * Check if this would be the first non-video image on the child (to assign roles).
+     * Check if this would be the first image on the child (to assign roles).
      */
     private function shouldBeFirstImage(Product $child): bool
     {
@@ -235,19 +243,11 @@ class Propagation
         }
         // If the child only has videos so far, the next image should get the roles
         foreach ($gallery as $entry) {
-            if (!$this->isVideoFile($entry->getFile() ?? '')) {
+            if ($entry->getMediaType() !== 'external-video') {
                 return false;
             }
         }
         return true;
-    }
-
-    /**
-     * Check if a file is a video (MP4).
-     */
-    private function isVideoFile(string $file): bool
-    {
-        return strtolower(pathinfo($file, PATHINFO_EXTENSION)) === 'mp4';
     }
 
     /**
