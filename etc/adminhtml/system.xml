@@ -79,6 +79,13 @@
                         <field id="deep_link_enabled">1</field>
                     </depends>
                 </field>
+
+                <field id="dropdown_support" translate="label comment" type="select" sortOrder="70"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Soporte Dropdown</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Activa el filtrado de galería por color cuando el atributo selector se renderiza como dropdown nativo (en vez de swatches). Útil para clientes que prefieren un &lt;select&gt; sobre swatches visuales. Cuando está OFF el módulo no impacta el flujo del dropdown nativo.</comment>
+                </field>
             </group>
 
             <!-- §9.2 Stock -->

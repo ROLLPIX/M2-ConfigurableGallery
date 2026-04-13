@@ -166,6 +166,7 @@ class GalleryData implements ArgumentInterface
             'preselectColor' => $this->config->isPreselectVariantPdpEnabled($storeId),
             'deepLinkEnabled' => $this->config->isDeepLinkEnabled($storeId),
             'updateUrlOnSelect' => $this->config->isUpdateUrlOnSelectEnabled($storeId),
+            'dropdownSupport' => $this->config->isDropdownSupportEnabled($storeId),
             'seoFriendlyUrl' => $seoFriendlyUrl,
             'seoColorSlugMap' => $seoColorSlugMap,
             'seoPreselectedColor' => $seoPreselectedColor,

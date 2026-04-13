@@ -54,4 +54,6 @@
 "Option ID del color a preseleccionar. Dejar vacío para auto-detección (primer color con stock).","Option ID of the color to preselect. Leave empty for auto-detection (first color with stock)."
 "URL SEO-friendly por Color","SEO-friendly URL by Color"
 "Genera URLs limpias como /producto/color/rojo en lugar de ?color=rojo o #color=318. Requiere Deep Link habilitado.","Generates clean URLs like /product/color/red instead of ?color=red or #color=318. Requires Deep Link enabled."
+"Soporte Dropdown","Dropdown Support"
+"Activa el filtrado de galería por color cuando el atributo selector se renderiza como dropdown nativo (en vez de swatches). Útil para clientes que prefieren un <select> sobre swatches visuales. Cuando está OFF el módulo no impacta el flujo del dropdown nativo.","Enables color-based gallery filtering when the selector attribute renders as a native dropdown (instead of swatches). Useful for clients who prefer a <select> over visual swatches. When OFF the module does not impact the native dropdown flow."
 "Rollpix - Galería Configurable","Rollpix - Configurable Gallery"

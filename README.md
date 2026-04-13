@@ -73,6 +73,7 @@ bin/magento setup:upgrade
 | Deep Link by Color | Yes | Allow `#color=318` or `?color=rojo` URL parameters |
 | Update URL on Select | Yes | Update the URL hash when a swatch is clicked |
 | SEO-friendly URL by Color | No | Clean URLs like `/product/color/rojo` instead of `?color=rojo`. Requires Deep Link enabled. |
+| Dropdown Support | No | Enables color-based gallery filtering when the selector attribute renders as a native `<select>` dropdown (instead of swatches). Useful for clients who prefer dropdowns over visual swatches. When OFF the module has zero functional impact on the native dropdown flow. |
 
 ### Stock
 
@@ -418,6 +419,9 @@ When the module is globally disabled, all behaviour falls back to stock Magento 
 ---
 
 ## Changelog
+
+### v1.0.58
+- New: optional support for native `<select>` dropdown (non-swatch) configurable attributes via `rollpix_configurable_gallery/general/dropdown_support` (default OFF). When enabled, registers a mixin over `Magento_ConfigurableProduct/js/configurable` that hooks `_configureElement` to dispatch the color change to the gallery switcher, blocks `_changeProductImage` to prevent native gallery overwrite, applies preselect/deep-link/SEO-URL via the existing pipeline, and hides out-of-stock options from the dropdown. Includes guard for swatch+dropdown mixed products: when the color attribute is rendered as a swatch on the page, the dropdown mixin bails and lets the swatch-renderer-mixin own the gallery. Zero functional impact when OFF (early return in `_create()`).
 
 ### v1.0.38
 - New: SEO-friendly URLs for color deep links (`/product/color/rojo` instead of `?color=rojo` or `#color=318`)
