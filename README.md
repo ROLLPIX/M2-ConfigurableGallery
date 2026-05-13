@@ -420,6 +420,9 @@ When the module is globally disabled, all behaviour falls back to stock Magento 
 
 ## Changelog
 
+### v1.0.59
+- Fix (IS-6180): skip auto-propagation when the parent save is driven by Magento's native "Edit configurations" wizard. The wizard writes images directly to the children in the same HTTP request, so propagating-from-parent (with `clean_before_propagate=1`) was wiping those wizard uploads and refilling only with whatever images were already tagged on the parent — leaving at most one image per color on each child. Detection uses the `configurable-matrix-serialized` request param (same signal Magento's `UpdateConfigurations` plugin uses). CLI propagation (`rollpix_gallery_propagate`) and the Rollpix color-mapping admin UI are untouched.
+
 ### v1.0.58
 - New: optional support for native `<select>` dropdown (non-swatch) configurable attributes via `rollpix_configurable_gallery/general/dropdown_support` (default OFF). When enabled, registers a mixin over `Magento_ConfigurableProduct/js/configurable` that hooks `_configureElement` to dispatch the color change to the gallery switcher, blocks `_changeProductImage` to prevent native gallery overwrite, applies preselect/deep-link/SEO-URL via the existing pipeline, and hides out-of-stock options from the dropdown. Includes guard for swatch+dropdown mixed products: when the color attribute is rendered as a swatch on the page, the dropdown mixin bails and lets the swatch-renderer-mixin own the gallery. Zero functional impact when OFF (early return in `_create()`).
 

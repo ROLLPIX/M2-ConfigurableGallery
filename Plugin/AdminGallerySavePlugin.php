@@ -27,6 +27,14 @@ use Rollpix\ConfigurableGallery\Model\Propagation;
  */
 class AdminGallerySavePlugin
 {
+    /**
+     * Request param emitted by Magento's configurable wizard when it updates
+     * children inline. Presence (with a non-empty JSON payload) means the
+     * wizard owns the child galleries for this request, so auto-propagation
+     * must not run on top — it would wipe the wizard's writes. IS-6180.
+     */
+    private const REQUEST_PARAM_WIZARD_MATRIX = 'configurable-matrix-serialized';
+
     public function __construct(
         private readonly Config $config,
         private readonly Propagation $propagation,
@@ -319,6 +327,24 @@ class AdminGallerySavePlugin
             return;
         }
 
+        // IS-6180 — the configurable wizard writes images directly to the
+        // children in the same request (Magento UpdateConfigurations plugin).
+        // Auto-propagating from the parent would clean_before_propagate those
+        // writes and refill from the parent's mapping, which the wizard never
+        // touched. Skip propagation for wizard-driven saves; CLI propagation
+        // (rollpix_gallery_propagate) is unaffected because that path has no
+        // HTTP request and therefore no wizard matrix param.
+        if ($this->isWizardSave()) {
+            if ($this->config->isDebugMode()) {
+                $this->logger->debug(
+                    'Rollpix ConfigurableGallery: skipping auto-propagation; '
+                    . 'configurable wizard owns child galleries for this request',
+                    ['product_id' => $product->getId(), 'sku' => $product->getSku()]
+                );
+            }
+            return;
+        }
+
         try {
             $report = $this->propagation->propagate($product);
 
@@ -346,5 +372,34 @@ class AdminGallerySavePlugin
                 'exception' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Detect whether the current request is a configurable "Edit configurations"
+     * wizard save *with at least one variation actually modified*.
+     *
+     * The serialized matrix is present on every configurable parent save (the
+     * admin form always renders the matrix), so existence alone is too coarse.
+     * We mirror Magento's own gate in UpdateConfigurations::getConfigurations,
+     * which only processes rows with `was_changed=true`. If no row was changed
+     * the wizard isn't actually writing anything to children, so propagation
+     * is safe to run as before.
+     */
+    private function isWizardSave(): bool
+    {
+        $raw = $this->request->getParam(self::REQUEST_PARAM_WIZARD_MATRIX);
+        if (!is_string($raw) || $raw === '' || $raw === '[]') {
+            return false;
+        }
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded) || empty($decoded)) {
+            return false;
+        }
+        foreach ($decoded as $row) {
+            if (is_array($row) && !empty($row['was_changed'])) {
+                return true;
+            }
+        }
+        return false;
     }
 }
