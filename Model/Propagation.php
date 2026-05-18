@@ -70,6 +70,15 @@ class Propagation
 
         $mediaMapping = $this->colorMapping->getColorMediaMapping($product, $storeId);
 
+        // IS-6180 — when cleanFirst is on, only delete child images whose file
+        // path also exists on the parent (= previously propagated). Images
+        // uploaded directly to the child (e.g. by Magento's "Edit configurations"
+        // wizard) have file paths the parent doesn't know about; those must
+        // survive. Fetch the parent's gallery file paths once for reuse.
+        $parentFilePaths = ($cleanFirst && !$dryRun)
+            ? $this->getParentMediaPaths($product)
+            : [];
+
         /** @var Configurable $typeInstance */
         $typeInstance = $product->getTypeInstance();
         $children = $typeInstance->getUsedProducts($product);
@@ -115,15 +124,17 @@ class Propagation
 
             $childChanged = false;
 
-            if ($cleanFirst && !$dryRun) {
-                $cleanedCount = $this->removeAllImages($child);
+            if ($cleanFirst && !$dryRun && !empty($parentFilePaths)) {
+                $cleanedCount = $this->removePropagatedFromChild($child, $parentFilePaths);
                 if ($cleanedCount > 0) {
                     $childChanged = true;
-                    // Reset in-memory gallery so dedup check works on clean state
-                    $child->setData('media_gallery', ['images' => [], 'values' => []]);
-                    $child->setData('media_gallery_entries', []);
+                    // Drop only the previously-propagated entries from the
+                    // in-memory gallery so the subsequent dedup + save sees
+                    // the clean slate for parent images, while child-direct
+                    // uploads remain intact and get persisted again on save.
+                    $this->filterChildMemoryGallery($child, $parentFilePaths);
                     $report['actions'][] = sprintf(
-                        'CLEAN child %s: removed %d images',
+                        'CLEAN child %s: removed %d propagated images (kept child-direct)',
                         $child->getSku(),
                         $cleanedCount
                     );
@@ -285,7 +296,126 @@ class Propagation
     }
 
     /**
+     * Return the file paths currently in the parent's media gallery.
+     *
+     * Used by smart cleanup to distinguish previously-propagated child images
+     * (paths the parent also has) from images uploaded directly to the child
+     * (paths the parent has never had).
+     *
+     * @return string[]
+     */
+    private function getParentMediaPaths(Product $parent): array
+    {
+        $connection = $this->resourceConnection->getConnection();
+        $galleryTable = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery');
+        $toEntityTable = $this->resourceConnection->getTableName(
+            'catalog_product_entity_media_gallery_value_to_entity'
+        );
+
+        return $connection->fetchCol(
+            $connection->select()
+                ->from(['g' => $galleryTable], ['value'])
+                ->join(['te' => $toEntityTable], 'g.value_id = te.value_id', [])
+                ->where('te.entity_id = ?', (int) $parent->getId())
+        );
+    }
+
+    /**
+     * Remove from a child only the gallery rows whose file path also exists
+     * on the parent (= came from a previous propagation). Files uploaded
+     * directly to the child are left alone.
+     *
+     * Mirrors removeAllImages() three-table cleanup but scoped by file path.
+     *
+     * @param string[] $parentFilePaths
+     * @return int Number of child gallery rows removed
+     */
+    private function removePropagatedFromChild(Product $child, array $parentFilePaths): int
+    {
+        if (empty($parentFilePaths)) {
+            return 0;
+        }
+
+        $connection = $this->resourceConnection->getConnection();
+        $galleryTable = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery');
+        $galleryValueTable = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery_value');
+        $toEntityTable = $this->resourceConnection->getTableName(
+            'catalog_product_entity_media_gallery_value_to_entity'
+        );
+
+        $entityId = (int) $child->getId();
+
+        $valueIds = $connection->fetchCol(
+            $connection->select()
+                ->from(['te' => $toEntityTable], ['te.value_id'])
+                ->join(['g' => $galleryTable], 'g.value_id = te.value_id', [])
+                ->where('te.entity_id = ?', $entityId)
+                ->where('g.value IN (?)', $parentFilePaths)
+        );
+
+        if (empty($valueIds)) {
+            return 0;
+        }
+
+        $connection->delete($galleryValueTable, ['value_id IN (?)' => $valueIds]);
+        $connection->delete(
+            $toEntityTable,
+            ['entity_id = ?' => $entityId, 'value_id IN (?)' => $valueIds]
+        );
+
+        foreach ($valueIds as $valueId) {
+            $stillLinked = (int) $connection->fetchOne(
+                $connection->select()
+                    ->from($toEntityTable, [new \Zend_Db_Expr('COUNT(*)')])
+                    ->where('value_id = ?', (int) $valueId)
+            );
+            if ($stillLinked === 0) {
+                $connection->delete($galleryTable, ['value_id = ?' => (int) $valueId]);
+            }
+        }
+
+        return count($valueIds);
+    }
+
+    /**
+     * Drop the propagated entries from a child's in-memory media_gallery so
+     * the subsequent productRepository->save() persists exactly: child-direct
+     * uploads (preserved) + the new propagation pass (added below).
+     *
+     * Without this, after we DB-delete propagated rows the in-memory state
+     * still references the now-deleted entries, and the save would put them
+     * back.
+     *
+     * @param string[] $parentFilePaths
+     */
+    private function filterChildMemoryGallery(Product $child, array $parentFilePaths): void
+    {
+        $gallery = $child->getMediaGallery('images') ?: [];
+        $keptImages = [];
+        foreach ($gallery as $key => $img) {
+            $file = $img['file'] ?? null;
+            if ($file === null || !in_array($file, $parentFilePaths, true)) {
+                $keptImages[$key] = $img;
+            }
+        }
+        $child->setData('media_gallery', ['images' => $keptImages, 'values' => []]);
+
+        $entries = $child->getMediaGalleryEntries() ?? [];
+        $keptEntries = [];
+        foreach ($entries as $entry) {
+            if (!in_array($entry->getFile(), $parentFilePaths, true)) {
+                $keptEntries[] = $entry;
+            }
+        }
+        $child->setData('media_gallery_entries', $keptEntries);
+    }
+
+    /**
      * Remove ALL gallery images from a product via direct DB delete.
+     *
+     * Used by the standalone {@see cleanChildren()} CLI command (a "wipe
+     * everything" operation by design). The propagation path uses the more
+     * targeted {@see removePropagatedFromChild()} instead.
      *
      * Deletes from all three gallery tables:
      * 1. catalog_product_entity_media_gallery_value (store-specific data)

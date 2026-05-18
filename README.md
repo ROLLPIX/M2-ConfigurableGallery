@@ -420,6 +420,9 @@ When the module is globally disabled, all behaviour falls back to stock Magento 
 
 ## Changelog
 
+### v1.0.60
+- Fix (IS-6180, follow-up): smart cleanup in `Propagation`. With `clean_before_propagate=1`, the propagation step now only removes child gallery rows whose file path also exists on the parent (= images that came from a previous propagation). Images uploaded directly to the child — including those written by Magento's native "Edit configurations" wizard — survive a subsequent parent gallery save. Resolves the mixed flow reported by Popper (wizard upload + then parent gallery edit was wiping the wizard's writes). `cleanChildren()` ("wipe everything") still uses the original full delete.
+
 ### v1.0.59
 - Fix (IS-6180): skip auto-propagation when the parent save is driven by Magento's native "Edit configurations" wizard. The wizard writes images directly to the children in the same HTTP request, so propagating-from-parent (with `clean_before_propagate=1`) was wiping those wizard uploads and refilling only with whatever images were already tagged on the parent — leaving at most one image per color on each child. Detection uses the `configurable-matrix-serialized` request param (same signal Magento's `UpdateConfigurations` plugin uses). CLI propagation (`rollpix_gallery_propagate`) and the Rollpix color-mapping admin UI are untouched.
 
