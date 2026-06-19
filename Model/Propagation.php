@@ -314,10 +314,18 @@ class Propagation
             return count($valueIds);
         }
 
-        // 1. Remove store-specific data (FK child of main)
-        $connection->delete($galleryValueTable, ['value_id IN (?)' => $valueIds]);
+        // 1. Remove store-specific data (FK child of main) — scoped to THIS entity ONLY.
+        //    A value_id can be shared with the configurable parent (the consolidate
+        //    migration links the simple's image to the parent via value_to_entity, so
+        //    parent and child point at the same value_id). Deleting by value_id alone
+        //    would also wipe the PARENT's gallery_value rows — including the
+        //    associated_attributes color mapping — which is exactly the data we must keep.
+        $connection->delete(
+            $galleryValueTable,
+            ['value_id IN (?)' => $valueIds, 'entity_id = ?' => $entityId]
+        );
 
-        // 2. Remove entity linkage (FK child of main)
+        // 2. Remove entity linkage (FK child of main) — only this entity's links.
         $connection->delete($toEntityTable, ['entity_id = ?' => $entityId]);
 
         // 3. Remove orphaned rows from main gallery table

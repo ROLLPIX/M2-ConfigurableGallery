@@ -420,6 +420,9 @@ When the module is globally disabled, all behaviour falls back to stock Magento 
 
 ## Changelog
 
+### v1.0.60
+- Fix (root cause): auto-propagation on save no longer wipes the configurable's color mapping. `Propagation::removeAllImages` (used by `clean before propagate` and the `clean` command) deleted `catalog_product_entity_media_gallery_value` rows **by `value_id` without an `entity_id` filter**; since consolidate shares the `value_id` between parent and child, cleaning a child also deleted the **parent's** `gallery_value` rows — including `associated_attributes`. The delete is now scoped to the child's own `entity_id`. This was the real reason consolidated mappings vanished on save (the v1.0.59 snapshot/restore ran before propagation undid it).
+
 ### v1.0.59
 - Fix: color mapping from `migrate --mode=consolidate` is no longer lost when the configurable is saved in admin. Consolidate now writes a gallery_value row **owned by the configurable** (`entity_id = parent`) instead of mutating the child's row, so Magento's core gallery save preserves `associated_attributes` instead of regenerating the row and dropping it.
 - Fix: `ColorMapping::getColorMediaMapping` dedupes gallery rows per `value_id`, preferring the row owned by the product, so images shared between a configurable and its simples are not double-counted in admin/frontend. Backward compatible with products consolidated before this fix.
