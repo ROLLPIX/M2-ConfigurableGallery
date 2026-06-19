@@ -27,6 +27,16 @@ use Rollpix\ConfigurableGallery\Model\Propagation;
  */
 class AdminGallerySavePlugin
 {
+    /**
+     * Per-product snapshot of the color mapping captured BEFORE the product is saved,
+     * keyed by product id. Used in afterSave to restore associated_attributes that
+     * Magento's core gallery save can drop (e.g. images consolidated from children,
+     * legacy Mango data). Shape: ['byPath' => [path => attr], 'byPosition' => [pos => attr]].
+     *
+     * @var array<int, array{byPath: array<string, string>, byPosition: array<int, string>}>
+     */
+    private array $mappingSnapshot = [];
+
     public function __construct(
         private readonly Config $config,
         private readonly Propagation $propagation,
@@ -35,6 +45,35 @@ class AdminGallerySavePlugin
         private readonly RequestInterface $request,
         private readonly LoggerInterface $logger
     ) {
+    }
+
+    /**
+     * Before save, snapshot the current color mapping for configurable products.
+     *
+     * Magento's core gallery save can drop the custom associated_attributes column for
+     * images that aren't cleanly "owned" by the product (e.g. shared with simple children
+     * after a consolidate migration, or legacy Mango data). We capture the mapping here —
+     * keyed by file path and by position — and restore it in afterSave once the new
+     * value_ids are known. Matching by path/position survives Magento changing value_ids.
+     *
+     * @param Product $subject
+     */
+    public function beforeSave(Product $subject): void
+    {
+        if (!$this->config->isEnabled()) {
+            return;
+        }
+
+        if ($subject->getTypeId() !== Configurable::TYPE_CODE) {
+            return;
+        }
+
+        $productId = (int) $subject->getId();
+        if ($productId <= 0) {
+            return;
+        }
+
+        $this->mappingSnapshot[$productId] = $this->snapshotMapping($productId);
     }
 
     /**
@@ -120,6 +159,18 @@ class AdminGallerySavePlugin
             }
         }
 
+        // Restore mappings that Magento's core gallery save may have dropped, using the
+        // pre-save snapshot. Runs BEFORE filename auto-detect so the accurate previous
+        // mapping wins over a filename guess — this is what correctly recovers colors whose
+        // filename does not match the label (e.g. "green_*" → VERDE, "black_*" → NEGRO) and
+        // distinguishes same-filename colors by position (e.g. NEGRO vs NEGRO 2.0).
+        if ($result->getTypeId() === Configurable::TYPE_CODE) {
+            $restored = $this->restoreFromSnapshot($result, $connection, $tableName, $handledValueIds);
+            if ($restored > 0) {
+                $galleryChanged = true;
+            }
+        }
+
         // Server-side auto-detect: for images that still have no associated_attributes
         // in the DB, detect color from filename. This is the reliable fallback that
         // doesn't depend on JS data transmission or temp-hash-to-real-ID matching.
@@ -141,6 +192,7 @@ class AdminGallerySavePlugin
                 'image_count' => count($mediaGallery['images']),
                 'gallery_changed' => $galleryChanged,
                 'handled_by_value_id' => count($handledValueIds),
+                'restored_from_snapshot' => $restored ?? 0,
                 'auto_detected' => $autoDetected ?? 0,
             ]);
         }
@@ -275,6 +327,144 @@ class AdminGallerySavePlugin
                 'unassigned_count' => count($unassigned),
                 'auto_detected_count' => $count,
             ]);
+        }
+
+        return $count;
+    }
+
+    /**
+     * Capture the product's current color mapping from the DB, keyed by file path and by
+     * gallery position. Only non-empty mappings are captured. Positions that resolve to
+     * conflicting mappings are dropped so the position fallback never guesses wrong.
+     *
+     * @return array{byPath: array<string, string>, byPosition: array<int, string>}
+     */
+    private function snapshotMapping(int $productId): array
+    {
+        $connection = $this->resourceConnection->getConnection();
+        $galleryTable = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery');
+        $valueTable = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery_value');
+        $toEntityTable = $this->resourceConnection->getTableName(
+            'catalog_product_entity_media_gallery_value_to_entity'
+        );
+
+        $select = $connection->select()
+            ->from(['mgv' => $valueTable], ['position', 'associated_attributes'])
+            ->join(['mg' => $galleryTable], 'mgv.value_id = mg.value_id', ['value'])
+            ->join(['te' => $toEntityTable], 'mg.value_id = te.value_id', [])
+            ->where('te.entity_id = ?', $productId)
+            ->where('mgv.store_id = ?', 0)
+            ->where('mgv.associated_attributes IS NOT NULL')
+            ->where("mgv.associated_attributes != ''");
+
+        $rows = $connection->fetchAll($select);
+
+        $byPath = [];
+        $byPosition = [];
+        $ambiguousPositions = [];
+
+        foreach ($rows as $row) {
+            $attr = (string) $row['associated_attributes'];
+            $path = (string) ($row['value'] ?? '');
+            $position = (int) ($row['position'] ?? 0);
+
+            if ($path !== '') {
+                $byPath[$path] = $attr;
+            }
+
+            if (array_key_exists($position, $byPosition) && $byPosition[$position] !== $attr) {
+                // Two different mappings at the same position — unreliable, drop it.
+                $ambiguousPositions[$position] = true;
+            } else {
+                $byPosition[$position] = $attr;
+            }
+        }
+
+        foreach (array_keys($ambiguousPositions) as $position) {
+            unset($byPosition[$position]);
+        }
+
+        return ['byPath' => $byPath, 'byPosition' => $byPosition];
+    }
+
+    /**
+     * Restore color mappings dropped during the core gallery save using the pre-save
+     * snapshot. Only fills images that currently have NO associated_attributes, matching
+     * by exact file path first (stable when the image was not duplicated) then by position
+     * (stable even when Magento assigned a new value_id and copied the file on save).
+     *
+     * @param Product $product
+     * @param \Magento\Framework\DB\Adapter\AdapterInterface $connection
+     * @param string $valueTable The catalog_product_entity_media_gallery_value table name
+     * @param int[] $handledValueIds Value IDs already handled; restored IDs are appended.
+     * @return int Number of images restored
+     */
+    private function restoreFromSnapshot(
+        Product $product,
+        $connection,
+        string $valueTable,
+        array &$handledValueIds
+    ): int {
+        $productId = (int) $product->getId();
+        $snapshot = $this->mappingSnapshot[$productId] ?? null;
+        if ($snapshot === null) {
+            return 0;
+        }
+        unset($this->mappingSnapshot[$productId]);
+
+        $byPath = $snapshot['byPath'] ?? [];
+        $byPosition = $snapshot['byPosition'] ?? [];
+        if (empty($byPath) && empty($byPosition)) {
+            return 0;
+        }
+
+        $galleryTable = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery');
+        $toEntityTable = $this->resourceConnection->getTableName(
+            'catalog_product_entity_media_gallery_value_to_entity'
+        );
+
+        $select = $connection->select()
+            ->from(['mgv' => $valueTable], ['value_id', 'position', 'associated_attributes'])
+            ->join(['mg' => $galleryTable], 'mgv.value_id = mg.value_id', ['value'])
+            ->join(['te' => $toEntityTable], 'mg.value_id = te.value_id', [])
+            ->where('te.entity_id = ?', $productId)
+            ->where('mgv.store_id = ?', 0);
+
+        $rows = $connection->fetchAll($select);
+
+        $count = 0;
+        foreach ($rows as $row) {
+            $current = (string) ($row['associated_attributes'] ?? '');
+            if ($current !== '') {
+                continue;
+            }
+
+            $valueId = (int) $row['value_id'];
+            if (in_array($valueId, $handledValueIds, true)) {
+                continue;
+            }
+
+            $path = (string) ($row['value'] ?? '');
+            $position = (int) ($row['position'] ?? 0);
+
+            $restore = null;
+            if ($path !== '' && isset($byPath[$path])) {
+                $restore = $byPath[$path];
+            } elseif (isset($byPosition[$position])) {
+                $restore = $byPosition[$position];
+            }
+
+            if ($restore === null || $restore === '') {
+                continue;
+            }
+
+            $connection->update(
+                $valueTable,
+                ['associated_attributes' => $restore],
+                ['value_id = ?' => $valueId, 'store_id = ?' => 0]
+            );
+            $handledValueIds[] = $valueId;
+            $count++;
         }
 
         return $count;

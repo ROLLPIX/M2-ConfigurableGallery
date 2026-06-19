@@ -420,6 +420,11 @@ When the module is globally disabled, all behaviour falls back to stock Magento 
 
 ## Changelog
 
+### v1.0.59
+- Fix: color mapping from `migrate --mode=consolidate` is no longer lost when the configurable is saved in admin. Consolidate now writes a gallery_value row **owned by the configurable** (`entity_id = parent`) instead of mutating the child's row, so Magento's core gallery save preserves `associated_attributes` instead of regenerating the row and dropping it.
+- Fix: `ColorMapping::getColorMediaMapping` dedupes gallery rows per `value_id`, preferring the row owned by the product, so images shared between a configurable and its simples are not double-counted in admin/frontend. Backward compatible with products consolidated before this fix.
+- New: `AdminGallerySavePlugin` snapshots the color mapping in `beforeSave` and restores it in `afterSave` (matching by file path, then by position). This is a robust safety net that survives Magento changing `value_id`s on save, recovers colors whose filename does not match the label (e.g. `green_*` → VERDE, `black_*` → NEGRO), and distinguishes same-filename colors by position (NEGRO vs NEGRO 2.0). Runs before the filename auto-detect fallback.
+
 ### v1.0.58
 - New: optional support for native `<select>` dropdown (non-swatch) configurable attributes via `rollpix_configurable_gallery/general/dropdown_support` (default OFF). When enabled, registers a mixin over `Magento_ConfigurableProduct/js/configurable` that hooks `_configureElement` to dispatch the color change to the gallery switcher, blocks `_changeProductImage` to prevent native gallery overwrite, applies preselect/deep-link/SEO-URL via the existing pipeline, and hides out-of-stock options from the dropdown. Includes guard for swatch+dropdown mixed products: when the color attribute is rendered as a swatch on the page, the dropdown mixin bails and lets the swatch-renderer-mixin own the gallery. Zero functional impact when OFF (early return in `_create()`).
 

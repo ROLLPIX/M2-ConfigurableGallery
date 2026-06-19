@@ -384,26 +384,24 @@ class MigrateCommand extends Command
                         ]);
                     }
 
-                    // Set the associated_attributes (and position if --sort) on the gallery value
-                    $existingValue = $connection->fetchOne(
-                        $connection->select()
-                            ->from($galleryValueTable, ['record_id'])
-                            ->where('value_id = ?', (int) $image['value_id'])
-                            ->where('store_id = ?', 0)
+                    // Create (or update) a gallery_value row OWNED BY THE CONFIGURABLE
+                    // (entity_id = parent). Sharing only the value_id/file with the child is
+                    // Magento's native shared-image model. Writing the parent's own row —
+                    // instead of mutating the child's — makes associated_attributes belong to
+                    // the configurable, so it survives a normal admin save: the parent no
+                    // longer looks "image-less" to Magento's core gallery save handler, which
+                    // would otherwise regenerate the row and drop the custom column.
+                    $connection->insertOnDuplicate(
+                        $galleryValueTable,
+                        [
+                            'value_id' => (int) $image['value_id'],
+                            'store_id' => 0,
+                            'entity_id' => (int) $product->getId(),
+                            'position' => $position,
+                            'associated_attributes' => $associatedAttributes,
+                        ],
+                        ['associated_attributes', 'position']
                     );
-
-                    $updateData = ['associated_attributes' => $associatedAttributes];
-                    if ($sort) {
-                        $updateData['position'] = $position;
-                    }
-
-                    if ($existingValue) {
-                        $connection->update(
-                            $galleryValueTable,
-                            $updateData,
-                            ['value_id = ?' => (int) $image['value_id'], 'store_id = ?' => 0]
-                        );
-                    }
 
                     $posInfo = $sort ? sprintf(' [pos %d]', $position) : '';
                     $output->writeln(sprintf(

@@ -104,7 +104,7 @@ class ColorMapping
         $select = $connection->select()
             ->from(
                 ['mgv' => $mediaGalleryValueTable],
-                ['value_id', 'position', 'disabled', 'associated_attributes']
+                ['value_id', 'entity_id', 'position', 'disabled', 'associated_attributes']
             )
             ->join(
                 ['mg' => $mediaGalleryTable],
@@ -122,6 +122,33 @@ class ColorMapping
             ->order('mgv.position ASC');
 
         $rows = $connection->fetchAll($select);
+
+        // An image shared between the configurable and its simple children can have more
+        // than one gallery_value row (one per entity_id). Keep a single row per value_id,
+        // preferring the row OWNED by this product (entity_id = product id) so we read the
+        // configurable's own mapping/position instead of a child's. Backward compatible:
+        // products consolidated before this fix only have the child's row, which is kept.
+        $productId = (int) $product->getId();
+        $rowByValueId = [];
+        foreach ($rows as $row) {
+            $valueId = (int) $row['value_id'];
+            $isOwner = ((int) ($row['entity_id'] ?? 0)) === $productId;
+            if (!isset($rowByValueId[$valueId])) {
+                $rowByValueId[$valueId] = $row;
+            } elseif (
+                $isOwner
+                && ((int) ($rowByValueId[$valueId]['entity_id'] ?? 0)) !== $productId
+            ) {
+                $rowByValueId[$valueId] = $row;
+            }
+        }
+
+        $rows = array_values($rowByValueId);
+        usort(
+            $rows,
+            static fn (array $a, array $b): int =>
+                ((int) ($a['position'] ?? 0)) <=> ((int) ($b['position'] ?? 0))
+        );
 
         $mapping = [];
         $prefix = sprintf('attribute%d-', $colorAttributeId);
