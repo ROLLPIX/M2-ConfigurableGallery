@@ -89,6 +89,7 @@ bin/magento setup:upgrade
 | Propagation Mode | Disabled | `disabled` / `automatic` / `manual` |
 | Roles to Propagate | image, small_image, thumbnail | Image roles assigned on propagated images |
 | Clean Before Propagate | Yes | Remove previously propagated images before re-propagating |
+| Propagate to All Children Without Selector Attribute | No | When the configurable has none of the *Selector Attributes* as a variation axis (e.g. size only), copy the whole parent gallery to every child. With No, those products are not propagated. |
 
 ### Cart / Checkout
 
@@ -203,7 +204,7 @@ bin/magento rollpix:gallery:propagate --all --dry-run
 bin/magento rollpix:gallery:propagate --all --clean-first
 ```
 
-Copies images from configurable parents to simple children filtered by color. Propagated images are flagged so they are not confused with manually uploaded images.
+Copies images from configurable parents to simple children filtered by color. Configurables with no selector attribute are skipped unless *Propagate to All Children Without Selector Attribute* is enabled, in which case every child gets the whole parent gallery. Propagated images are flagged so they are not confused with manually uploaded images.
 
 ### Clean
 
@@ -420,6 +421,10 @@ When the module is globally disabled, all behaviour falls back to stock Magento 
 ---
 
 ## Changelog
+
+### v1.0.62
+- New: `propagation/propagate_without_selector` (default No). When a configurable has none of the selector attributes as a variation axis (e.g. size only), propagation copies the whole parent gallery to every child instead of skipping the product with "No selector attribute resolves for this product". Products with a selector attribute are unaffected.
+- Refactor: `ColorMapping` reads the gallery rows through a shared private method; `getColorMediaMapping()` returns the same data, and the new `getAllMedia()` returns the gallery without color filtering.
 
 ### v1.0.60
 - Fix (root cause): auto-propagation on save no longer wipes the configurable's color mapping. `Propagation::removeAllImages` (used by `clean before propagate` and the `clean` command) deleted `catalog_product_entity_media_gallery_value` rows **by `value_id` without an `entity_id` filter**; since consolidate shares the `value_id` between parent and child, cleaning a child also deleted the **parent's** `gallery_value` rows — including `associated_attributes`. The delete is now scoped to the child's own `entity_id`. This was the real reason consolidated mappings vanished on save (the v1.0.59 snapshot/restore ran before propagation undid it).

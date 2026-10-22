@@ -20,11 +20,15 @@ use Psr\Log\LoggerInterface;
  * - manual: triggered via CLI command (bin/magento rollpix:gallery:propagate)
  *
  * The propagation creates copies of the parent's images in each simple child,
- * filtered by color. When cleanFirst is enabled, ALL existing images on the
- * child are removed before re-propagating (ensures a clean slate).
+ * filtered by color. Products with no selector attribute get the whole gallery
+ * in every child when propagate_without_selector is enabled. When cleanFirst is
+ * enabled, ALL existing images on the child are removed before re-propagating
+ * (ensures a clean slate).
  */
 class Propagation
 {
+    private const GENERIC_MEDIA_KEY = 'null';
+
     public function __construct(
         private readonly Config $config,
         private readonly AttributeResolver $attributeResolver,
@@ -63,30 +67,40 @@ class Propagation
         $cleanFirst ??= $this->config->isCleanBeforePropagate($storeId);
         $propagationRoles = $this->config->getPropagationRoles($storeId);
         $colorAttributeCode = $this->attributeResolver->resolveForProduct($product, $storeId);
-        if ($colorAttributeCode === null) {
+        $propagateAll = $colorAttributeCode === null;
+        if ($propagateAll && !$this->config->isPropagateWithoutSelector($storeId)) {
             $report['errors'][] = 'No selector attribute resolves for this product';
             return $report;
         }
 
-        $mediaMapping = $this->colorMapping->getColorMediaMapping($product, $storeId);
+        if ($propagateAll) {
+            // Without a selector there is no color to filter by: every image is generic.
+            $mediaMapping = [self::GENERIC_MEDIA_KEY => $this->colorMapping->getAllMedia($product, $storeId)];
+            $report['actions'][] = 'NO SELECTOR: propagating the whole parent gallery to every child';
+        } else {
+            $mediaMapping = $this->colorMapping->getColorMediaMapping($product, $storeId);
+        }
 
         /** @var Configurable $typeInstance */
         $typeInstance = $product->getTypeInstance();
         $children = $typeInstance->getUsedProducts($product);
 
         foreach ($children as $child) {
-            $childColorValue = $child->getData($colorAttributeCode);
-            if ($childColorValue === null) {
-                $report['actions'][] = sprintf(
-                    'SKIP child %s: no color attribute value',
-                    $child->getSku()
-                );
-                continue;
+            $colorKey = null;
+            if (!$propagateAll) {
+                $childColorValue = $child->getData($colorAttributeCode);
+                if ($childColorValue === null) {
+                    $report['actions'][] = sprintf(
+                        'SKIP child %s: no color attribute value',
+                        $child->getSku()
+                    );
+                    continue;
+                }
+                $colorKey = (string) (int) $childColorValue;
             }
 
-            $colorKey = (string) (int) $childColorValue;
-            $colorMedia = $mediaMapping[$colorKey] ?? null;
-            $genericMedia = $mediaMapping['null'] ?? null;
+            $colorMedia = $colorKey === null ? null : ($mediaMapping[$colorKey] ?? null);
+            $genericMedia = $mediaMapping[self::GENERIC_MEDIA_KEY] ?? null;
 
             // Combine color-specific and generic images
             $imagesToPropagate = [];
@@ -108,7 +122,7 @@ class Propagation
                 $report['actions'][] = sprintf(
                     'SKIP child %s (color %s): no images to propagate',
                     $child->getSku(),
-                    $colorKey
+                    $colorKey ?? 'any'
                 );
                 continue;
             }
