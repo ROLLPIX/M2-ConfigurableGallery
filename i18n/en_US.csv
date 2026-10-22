@@ -59,3 +59,5 @@
 "Rollpix - Galería Configurable","Rollpix - Configurable Gallery"
 "Funcionar con el Modulo Deshabilitado","Run With the Module Disabled"
 "Permite que la imagen por color en carrito funcione aunque ""Habilitar Modulo"" este en No. Util para arreglar solo el carrito sin activar la galeria de PDP ni la imagen por swatch en PLP.","Lets the cart color image work even when ""Enable Module"" is set to No. Useful to fix only the cart without turning on the PDP gallery or the PLP swatch image."
+"Propagar a Todos los Hijos sin Atributo Selector","Propagate to All Children Without Selector Attribute"
+"Si el configurable no varía por ninguno de los Atributos Selectores (por ejemplo, sólo por talle), propaga todas sus imágenes a todos los hijos. Con ""No"", esos productos no se propagan.","When the configurable does not vary by any of the Selector Attributes (e.g. size only), propagates all of its images to every child. When set to ""No"", those products are not propagated."
