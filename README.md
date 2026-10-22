@@ -425,6 +425,7 @@ When the module is globally disabled, all behaviour falls back to stock Magento 
 ### v1.0.62
 - New: `propagation/propagate_without_selector` (default No). When a configurable has none of the selector attributes as a variation axis (e.g. size only), propagation copies the whole parent gallery to every child instead of skipping the product with "No selector attribute resolves for this product". Products with a selector attribute are unaffected.
 - Fix: `rollpix:gallery:propagate` loads the configurables at the global scope (store 0), so the image roles it assigns to the children are saved globally, as an admin save does. Before, the CLI wrote them on the default store view, leaving the children without base/small/thumbnail on "All Store Views".
+  Behaviour change: the command now also reads the module configuration (selector attributes, roles, clean before propagate, propagate without selector) at the global scope, like an admin save. Values saved only at store-view scope no longer apply to the CLI.
 - Refactor: `ColorMapping` reads the gallery rows through a shared private method; `getColorMediaMapping()` returns the same data, and the new `getAllMedia()` returns the gallery without color filtering.
 
 ### v1.0.60
