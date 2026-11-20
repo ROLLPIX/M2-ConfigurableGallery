@@ -23,6 +23,7 @@
                 <propagation_mode>disabled</propagation_mode>
                 <propagation_roles>image,small_image,thumbnail</propagation_roles>
                 <clean_before_propagate>1</clean_before_propagate>
+                <propagate_without_selector>0</propagate_without_selector>
             </propagation>
             <cart>
                 <cart_image_override>1</cart_image_override>

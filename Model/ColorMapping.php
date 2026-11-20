@@ -17,6 +17,9 @@ use Psr\Log\LoggerInterface;
  */
 class ColorMapping
 {
+    private const MEDIA_TYPE_IMAGE = 'image';
+    private const MEDIA_TYPE_VIDEO = 'external-video';
+
     public function __construct(
         private readonly Config $config,
         private readonly AttributeResolver $attributeResolver,
@@ -94,6 +97,70 @@ class ColorMapping
             return [];
         }
 
+        $mapping = [];
+        $prefix = sprintf('attribute%d-', $colorAttributeId);
+
+        foreach ($this->fetchGalleryRows($product, $storeId) as $row) {
+            $entry = $this->buildMediaEntry($row);
+            $isVideo = $this->isVideo($entry);
+
+            $optionIds = $this->parseColorOptionIds($entry['associated_attributes'], $prefix);
+
+            if (empty($optionIds)) {
+                // Generic image/video (no color assigned)
+                $key = 'null';
+                $mapping[$key] ??= ['images' => [], 'videos' => []];
+                $mapping[$key][$isVideo ? 'videos' : 'images'][] = $entry;
+            } else {
+                foreach ($optionIds as $optionId) {
+                    $key = (string) $optionId;
+                    $mapping[$key] ??= ['images' => [], 'videos' => []];
+                    $mapping[$key][$isVideo ? 'videos' : 'images'][] = $entry;
+                }
+            }
+        }
+
+        if ($this->config->isDebugMode($storeId)) {
+            $this->logger->debug('Rollpix ConfigurableGallery: Color media mapping', [
+                'product_id' => $product->getId(),
+                'color_attribute_id' => $colorAttributeId,
+                'mapping_keys' => array_keys($mapping),
+            ]);
+        }
+
+        return $mapping;
+    }
+
+    /**
+     * Get every enabled media entry of a product in gallery order, ignoring color assignments.
+     *
+     * Used to propagate the whole gallery when the product has no selector attribute.
+     *
+     * @param Product $product
+     * @param int|string|null $storeId
+     * @return array{images: array<int, array>, videos: array<int, array>}
+     */
+    public function getAllMedia(Product $product, int|string|null $storeId = null): array
+    {
+        $media = ['images' => [], 'videos' => []];
+
+        foreach ($this->fetchGalleryRows($product, $storeId) as $row) {
+            $entry = $this->buildMediaEntry($row);
+            $media[$this->isVideo($entry) ? 'videos' : 'images'][] = $entry;
+        }
+
+        return $media;
+    }
+
+    /**
+     * Fetch the enabled gallery rows of a product, one per value_id, sorted by position.
+     *
+     * @param Product $product
+     * @param int|string|null $storeId
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchGalleryRows(Product $product, int|string|null $storeId): array
+    {
         $connection = $this->resourceConnection->getConnection();
         $mediaGalleryTable = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery');
         $mediaGalleryValueTable = $this->resourceConnection->getTableName('catalog_product_entity_media_gallery_value');
@@ -150,48 +217,36 @@ class ColorMapping
                 ((int) ($a['position'] ?? 0)) <=> ((int) ($b['position'] ?? 0))
         );
 
-        $mapping = [];
-        $prefix = sprintf('attribute%d-', $colorAttributeId);
+        return $rows;
+    }
 
-        foreach ($rows as $row) {
-            $associatedAttributes = $row['associated_attributes'] ?? null;
-            $mediaType = $row['media_type'] ?? 'image';
-            $isVideo = ($mediaType === 'external-video');
+    /**
+     * Normalize a gallery row into the media entry shape returned by this class.
+     *
+     * @param array $row Gallery row from fetchGalleryRows()
+     * @return array<string, mixed>
+     */
+    private function buildMediaEntry(array $row): array
+    {
+        return [
+            'value_id' => (int) $row['value_id'],
+            'file' => $row['value'],
+            'media_type' => $row['media_type'] ?? self::MEDIA_TYPE_IMAGE,
+            'position' => (int) ($row['position'] ?? 0),
+            'disabled' => (bool) ($row['disabled'] ?? false),
+            'associated_attributes' => $row['associated_attributes'] ?? null,
+        ];
+    }
 
-            $entry = [
-                'value_id' => (int) $row['value_id'],
-                'file' => $row['value'],
-                'media_type' => $mediaType,
-                'position' => (int) ($row['position'] ?? 0),
-                'disabled' => (bool) ($row['disabled'] ?? false),
-                'associated_attributes' => $associatedAttributes,
-            ];
-
-            $optionIds = $this->parseColorOptionIds($associatedAttributes, $prefix);
-
-            if (empty($optionIds)) {
-                // Generic image/video (no color assigned)
-                $key = 'null';
-                $mapping[$key] ??= ['images' => [], 'videos' => []];
-                $mapping[$key][$isVideo ? 'videos' : 'images'][] = $entry;
-            } else {
-                foreach ($optionIds as $optionId) {
-                    $key = (string) $optionId;
-                    $mapping[$key] ??= ['images' => [], 'videos' => []];
-                    $mapping[$key][$isVideo ? 'videos' : 'images'][] = $entry;
-                }
-            }
-        }
-
-        if ($this->config->isDebugMode($storeId)) {
-            $this->logger->debug('Rollpix ConfigurableGallery: Color media mapping', [
-                'product_id' => $product->getId(),
-                'color_attribute_id' => $colorAttributeId,
-                'mapping_keys' => array_keys($mapping),
-            ]);
-        }
-
-        return $mapping;
+    /**
+     * Check whether a media entry is an external video.
+     *
+     * @param array $entry Entry from buildMediaEntry()
+     * @return bool
+     */
+    private function isVideo(array $entry): bool
+    {
+        return $entry['media_type'] === self::MEDIA_TYPE_VIDEO;
     }
 
     /**

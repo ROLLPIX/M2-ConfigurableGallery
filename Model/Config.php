@@ -34,6 +34,8 @@ class Config
     private const XML_PATH_PROPAGATION_MODE = self::XML_PATH_PREFIX . 'propagation/propagation_mode';
     private const XML_PATH_PROPAGATION_ROLES = self::XML_PATH_PREFIX . 'propagation/propagation_roles';
     private const XML_PATH_CLEAN_BEFORE_PROPAGATE = self::XML_PATH_PREFIX . 'propagation/clean_before_propagate';
+    private const XML_PATH_PROPAGATE_WITHOUT_SELECTOR =
+        self::XML_PATH_PREFIX . 'propagation/propagate_without_selector';
 
     // §9.4 Cart/Checkout
     private const XML_PATH_CART_IMAGE_OVERRIDE = self::XML_PATH_PREFIX . 'cart/cart_image_override';
@@ -200,6 +202,15 @@ class Config
     {
         return $this->scopeConfig->isSetFlag(
             self::XML_PATH_CLEAN_BEFORE_PROPAGATE,
+            ScopeInterface::SCOPE_STORE,
+            $storeId
+        );
+    }
+
+    public function isPropagateWithoutSelector(int|string|null $storeId = null): bool
+    {
+        return $this->scopeConfig->isSetFlag(
+            self::XML_PATH_PROPAGATE_WITHOUT_SELECTOR,
             ScopeInterface::SCOPE_STORE,
             $storeId
         );

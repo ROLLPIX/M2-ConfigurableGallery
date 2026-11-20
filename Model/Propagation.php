@@ -10,6 +10,7 @@ use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
 use Magento\Framework\App\Filesystem\DirectoryList;
 use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\Filesystem;
+use Magento\Store\Model\Store;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -20,11 +21,16 @@ use Psr\Log\LoggerInterface;
  * - manual: triggered via CLI command (bin/magento rollpix:gallery:propagate)
  *
  * The propagation creates copies of the parent's images in each simple child,
- * filtered by color. When cleanFirst is enabled, ALL existing images on the
- * child are removed before re-propagating (ensures a clean slate).
+ * filtered by color. Products with no selector attribute get the whole gallery
+ * in every child when propagate_without_selector is enabled. When cleanFirst is
+ * enabled, ALL existing images on the child are removed before re-propagating
+ * (ensures a clean slate).
  */
 class Propagation
 {
+    private const GENERIC_MEDIA_KEY = 'null';
+    private const NO_IMAGE_SELECTED = 'no_selection';
+
     public function __construct(
         private readonly Config $config,
         private readonly AttributeResolver $attributeResolver,
@@ -63,30 +69,40 @@ class Propagation
         $cleanFirst ??= $this->config->isCleanBeforePropagate($storeId);
         $propagationRoles = $this->config->getPropagationRoles($storeId);
         $colorAttributeCode = $this->attributeResolver->resolveForProduct($product, $storeId);
-        if ($colorAttributeCode === null) {
+        $propagateAll = $colorAttributeCode === null;
+        if ($propagateAll && !$this->config->isPropagateWithoutSelector($storeId)) {
             $report['errors'][] = 'No selector attribute resolves for this product';
             return $report;
         }
 
-        $mediaMapping = $this->colorMapping->getColorMediaMapping($product, $storeId);
+        if ($propagateAll) {
+            // Without a selector there is no color to filter by: every image is generic.
+            $mediaMapping = [self::GENERIC_MEDIA_KEY => $this->colorMapping->getAllMedia($product, $storeId)];
+            $report['actions'][] = 'NO SELECTOR: propagating the whole parent gallery to every child';
+        } else {
+            $mediaMapping = $this->colorMapping->getColorMediaMapping($product, $storeId);
+        }
 
         /** @var Configurable $typeInstance */
         $typeInstance = $product->getTypeInstance();
         $children = $typeInstance->getUsedProducts($product);
 
         foreach ($children as $child) {
-            $childColorValue = $child->getData($colorAttributeCode);
-            if ($childColorValue === null) {
-                $report['actions'][] = sprintf(
-                    'SKIP child %s: no color attribute value',
-                    $child->getSku()
-                );
-                continue;
+            $colorKey = null;
+            if (!$propagateAll) {
+                $childColorValue = $child->getData($colorAttributeCode);
+                if ($childColorValue === null) {
+                    $report['actions'][] = sprintf(
+                        'SKIP child %s: no color attribute value',
+                        $child->getSku()
+                    );
+                    continue;
+                }
+                $colorKey = (string) (int) $childColorValue;
             }
 
-            $colorKey = (string) (int) $childColorValue;
-            $colorMedia = $mediaMapping[$colorKey] ?? null;
-            $genericMedia = $mediaMapping['null'] ?? null;
+            $colorMedia = $colorKey === null ? null : ($mediaMapping[$colorKey] ?? null);
+            $genericMedia = $mediaMapping[self::GENERIC_MEDIA_KEY] ?? null;
 
             // Combine color-specific and generic images
             $imagesToPropagate = [];
@@ -108,7 +124,7 @@ class Propagation
                 $report['actions'][] = sprintf(
                     'SKIP child %s (color %s): no images to propagate',
                     $child->getSku(),
-                    $colorKey
+                    $colorKey ?? 'any'
                 );
                 continue;
             }
@@ -348,7 +364,11 @@ class Propagation
     }
 
     /**
-     * Reset image/small_image/thumbnail attributes to 'no_selection'.
+     * Reset image/small_image/thumbnail attributes to 'no_selection' at the global scope.
+     *
+     * Store-view rows are deleted instead: left as 'no_selection' they would keep overriding
+     * the roles saved afterwards at the global scope, and the child would show no main image
+     * on that store view.
      */
     private function resetImageRoles(Product $product): void
     {
@@ -370,13 +390,18 @@ class Propagation
         }
 
         if (!empty($roleAttributeIds)) {
+            $roleRows = [
+                'entity_id = ?' => $entityId,
+                'attribute_id IN (?)' => $roleAttributeIds,
+            ];
+            $connection->delete(
+                $varcharTable,
+                $roleRows + ['store_id != ?' => Store::DEFAULT_STORE_ID]
+            );
             $connection->update(
                 $varcharTable,
-                ['value' => 'no_selection'],
-                [
-                    'entity_id = ?' => $entityId,
-                    'attribute_id IN (?)' => $roleAttributeIds,
-                ]
+                ['value' => self::NO_IMAGE_SELECTED],
+                $roleRows + ['store_id = ?' => Store::DEFAULT_STORE_ID]
             );
         }
     }

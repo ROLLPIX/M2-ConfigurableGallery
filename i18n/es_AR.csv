@@ -59,3 +59,5 @@
 "Rollpix - Galería Configurable","Rollpix - Galería Configurable"
 "Funcionar con el Modulo Deshabilitado","Funcionar con el Módulo Deshabilitado"
 "Permite que la imagen por color en carrito funcione aunque ""Habilitar Modulo"" este en No. Util para arreglar solo el carrito sin activar la galeria de PDP ni la imagen por swatch en PLP.","Permite que la imagen por color en carrito funcione aunque ""Habilitar Módulo"" esté en No. Útil para arreglar sólo el carrito sin activar la galería de PDP ni la imagen por swatch en PLP."
+"Propagar a Todos los Hijos sin Atributo Selector","Propagar a Todos los Hijos sin Atributo Selector"
+"Si el configurable no varía por ninguno de los Atributos Selectores (por ejemplo, sólo por talle), propaga todas sus imágenes a todos los hijos. Con ""No"", esos productos no se propagan.","Si el configurable no varía por ninguno de los Atributos Selectores (por ejemplo, sólo por talle), propaga todas sus imágenes a todos los hijos. Con ""No"", esos productos no se propagan."

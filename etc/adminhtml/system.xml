@@ -142,6 +142,16 @@
                         <field id="propagation_mode" separator=",">automatic,manual</field>
                     </depends>
                 </field>
+
+                <field id="propagate_without_selector" translate="label comment" type="select" sortOrder="40"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Propagar a Todos los Hijos sin Atributo Selector</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Si el configurable no varía por ninguno de los Atributos Selectores (por ejemplo, sólo por talle), propaga todas sus imágenes a todos los hijos. Con "No", esos productos no se propagan.</comment>
+                    <depends>
+                        <field id="propagation_mode" separator=",">automatic,manual</field>
+                    </depends>
+                </field>
             </group>
 
             <!-- §9.4 Cart/Checkout -->

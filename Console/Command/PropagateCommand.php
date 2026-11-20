@@ -8,6 +8,7 @@ use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory as ProductColl
 use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
 use Magento\Framework\App\State;
 use Magento\Framework\Console\Cli;
+use Magento\Store\Model\Store;
 use Rollpix\ConfigurableGallery\Model\Config;
 use Rollpix\ConfigurableGallery\Model\Propagation;
 use Symfony\Component\Console\Command\Command;
@@ -93,6 +94,9 @@ class PropagateCommand extends Command
         $output->writeln(str_repeat('=', 50));
 
         $collection = $this->productCollectionFactory->create();
+        // Same scope as an admin save: children and their image roles are written globally,
+        // not on the default store view the CLI would otherwise resolve.
+        $collection->setStoreId(Store::DEFAULT_STORE_ID);
         $collection->addAttributeToFilter('type_id', Configurable::TYPE_CODE);
         $collection->addAttributeToSelect('*');
 
