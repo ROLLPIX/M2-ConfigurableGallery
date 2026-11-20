@@ -10,6 +10,7 @@ use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
 use Magento\Framework\App\Filesystem\DirectoryList;
 use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\Filesystem;
+use Magento\Store\Model\Store;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -28,6 +29,7 @@ use Psr\Log\LoggerInterface;
 class Propagation
 {
     private const GENERIC_MEDIA_KEY = 'null';
+    private const NO_IMAGE_SELECTED = 'no_selection';
 
     public function __construct(
         private readonly Config $config,
@@ -362,7 +364,11 @@ class Propagation
     }
 
     /**
-     * Reset image/small_image/thumbnail attributes to 'no_selection'.
+     * Reset image/small_image/thumbnail attributes to 'no_selection' at the global scope.
+     *
+     * Store-view rows are deleted instead: left as 'no_selection' they would keep overriding
+     * the roles saved afterwards at the global scope, and the child would show no main image
+     * on that store view.
      */
     private function resetImageRoles(Product $product): void
     {
@@ -384,13 +390,18 @@ class Propagation
         }
 
         if (!empty($roleAttributeIds)) {
+            $roleRows = [
+                'entity_id = ?' => $entityId,
+                'attribute_id IN (?)' => $roleAttributeIds,
+            ];
+            $connection->delete(
+                $varcharTable,
+                $roleRows + ['store_id != ?' => Store::DEFAULT_STORE_ID]
+            );
             $connection->update(
                 $varcharTable,
-                ['value' => 'no_selection'],
-                [
-                    'entity_id = ?' => $entityId,
-                    'attribute_id IN (?)' => $roleAttributeIds,
-                ]
+                ['value' => self::NO_IMAGE_SELECTED],
+                $roleRows + ['store_id = ?' => Store::DEFAULT_STORE_ID]
             );
         }
     }
